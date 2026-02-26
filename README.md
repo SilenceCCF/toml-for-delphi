@@ -8,6 +8,7 @@
 1. TOML.Parser.pas 单元的 ParseTOMLFile 函数增加自动识别文件编码格式功能，增强兼容性。
 2. 如要支持更低版本的 delphi，只须将 TOML.Parser.pas 和 TOML.Serializer.pas 单元中与 CharInSet 相关的语句替换回注释掉的 in 语句即可。
 3. 增加 TOML.Helper.pas 单元，简化读写操作，该单元稍做修改也可适用于 Free Pascal。
+4. examples 等尚未增加，待续。
 
 以下是相比原单元，新增的方法：
 - 读取
