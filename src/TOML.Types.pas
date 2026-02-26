@@ -11,9 +11,9 @@
 }
 unit TOML.Types;
 
-{$mode objfpc}{$H+}{$J-}
-{$modeswitch typehelpers}
-{$modeswitch advancedrecords}
+//{$mode objfpc}{$H+}{$J-}
+//{$modeswitch typehelpers}
+//{$modeswitch advancedrecords}
 
 interface
 
@@ -52,11 +52,11 @@ type
 
   { Generic dictionary type for TOML tables
     Maps string keys to TOML values with case-sensitive comparison }
-  TTOMLTableDict = specialize TDictionary<string, TTOMLValue>;
+  TTOMLTableDict = TDictionary<string, TTOMLValue>;
   
   { Generic list type for TOML arrays
     Stores ordered list of TOML values }
-  TTOMLValueList = specialize TList<TTOMLValue>;
+  TTOMLValueList = TList<TTOMLValue>;
 
   { Base TOML value class - abstract base class for all TOML value types
     Provides common functionality and type conversion methods }
