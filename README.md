@@ -93,7 +93,9 @@
 - 示例：
 ```
     //打开 toml 文件
-    Config := ParseTOMLFromFile('demo.toml');
+    Config := NewTable.LoadFromFile('config.toml');
+    // 或：
+    Config := LoadToml('config.toml');
     // 读取
     width := Config.GetInt('width', 800);
     title := Config.GetStr('title');
