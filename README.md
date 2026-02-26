@@ -1,3 +1,180 @@
+# TOML Parser for Delphi
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Delphi](https://img.shields.io/badge/Delphi2009%20and%20high-green.svg)](https://www.embarcadero.com/products/delphi/)
+[![TOML](https://img.shields.io/badge/TOML-1.0.0-green.svg)](https://toml.io/)
+
+一个解析 [TOML](https://toml.io/) 格式的单元，改写自 [ikelaiah 的 TOML Parser for Free Pascal](https://github.com/ikelaiah/toml-fp) v1.0.3 版本，适用于 Delphi 2009 及更高版本，并做了以下修改：
+1. TOML.Parser.pas 单元的 ParseTOMLFile 函数增加自动识别文件编码格式功能，增强兼容性。
+2. 如要支持更低版本的 delphi，只须将 TOML.Parser.pas 和 TOML.Serializer.pas 单元中与 CharInSet 相关的语句替换回注释掉的 in 语句即可。
+3. 增加 TOML.Helper.pas 单元，简化读写操作，该单元稍做修改也可适用于 Free Pascal。
+
+以下是相比原单元，新增的方法：
+- 读取
+     
+```
+      // 从文件加载
+      Config := NewTable.LoadFromFile('config.toml');
+      // 或：
+      Config := LoadToml('config.toml');
+      // 基本类型
+      Config.GetStr(Key, Default);       // 字符串
+      Config.GetInt(Key, Default);       // 整数
+      Config.GetFloat(Key, Default);     // 浮点数
+      Config.GetBool(Key, Default);      // 布尔值
+      Config.GetDateTime(Key, Default);  // 日期时间
+
+      // 复杂类型
+      Config.GetArray(Key);              // 数组（返回nil表示不存在）
+      Config.GetTable(Key);              // 表（返回nil表示不存在）
+
+      // 数组方法
+      Array.GetStr(Index, Default);
+      Array.GetInt(Index, Default);
+      Array.GetTable(Index);
+      Array.ForEachTable(Procedure);
+```
+- 写入
+```
+      // Set类
+      Config.SetStr('title', 'My App');
+      Config.SetInt('width', 1920);
+      Config.SetFloat('scale', 1.5);
+      Config.SetBool('debug', False);
+      Config.SetDateTime('created', Now);
+      Config.SetArray('tags', Tags);
+      Config.SetTable('server', Server);
+
+      // Put方法，支持重载，自动识别类型
+      Config := NewTable
+        .Put('width', 1920)      // 自动识别为 Integer
+        .Put('height', 1080)
+        .Put('title', 'My App')  // 自动识别为 String
+        .Put('debug', False);    // 自动识别为 Boolean
+
+      // 数组的 Add 方法
+      Tags := NewArray
+        .AddStr('pascal')
+        .AddStr('delphi')
+        .AddStr('toml');
+
+      Ports := NewArray
+        .AddInt(8080)
+        .AddInt(8081)
+        .AddInt(8082);
+
+      // 更新或创建
+      Config.AddOrSetInt('port', 8080);
+      Config.AddOrSetFloat('version', 1.3);
+      Config.AddOrSetStr('title', 'Updated Title');
+      Config.AddOrSetBool('enabled', true);
+      Config.AddOrSetDateTime('date',now);
+      Config.AddOrSetArray('tags',tags);
+      Config.AddOrSetTable('server', Server);
+
+      // 创建表或数组
+      Config := NewTable;
+      Tags := NewArray;
+      // 或更短的别名
+      Config := Table;
+      Tags := Arr;
+
+      // 其它工具方法
+      Config.ToString;                 // 转换为字符串
+      Config.Count;                    // 获取键数量
+      Config.HasKey(Key);              // 检查键是否存在
+      Config.GetKeys(List, Recursive); // 获取所有键名
+      Config.REmove('key');            // 删除键
+      Array.RemoveAt(idx);             // 按索引删除数组中数据
+      Array.Clear;                     // 清空数组
+      Array.AddArray(NestedArray);     // 嵌套数组
+```  
+- 示例：
+```
+    //打开 toml 文件
+    Config := ParseTOMLFromFile('demo.toml');
+    // 读取
+    width := Config.GetInt('width', 800);
+    title := Config.GetStr('title');
+    debug := Config.GetBool('debug',False);
+    name := Config.GetStr('server.host', 'localhost');  // 支持点分隔路径
+
+    //创建
+    Config := NewTable;
+    Tags := NewArray;
+
+    //创建同时赋值：
+    Config := NewTable
+      .SetStr('app_name', 'My Application')
+      .SetStr('version', '1.0.0')
+      .SetInt('port', 8080)
+      .SetBool('debug', False);
+    Tags := NewArray
+      .AddStr('pascal')
+      .AddStr('delphi')
+      .AddStr('toml');
+
+    //创建嵌套结构：
+    Config := NewTable
+      .Put('server',
+        NewTable
+          .Put('host', 'localhost')
+          .Put('port', 8080)
+      )
+      .Put('database',
+        NewTable
+          .Put('host', 'localhost')
+          .Put('port', 5432)
+          .Put('pool_size', 10)
+      );
+  
+    // 写入
+    Config.SetStr('title', 'My App');
+    Config.SetInt('width', 1920);
+    Config.SetBool('debug', False);
+
+    // 自动识别类型写入
+    Config.Put('width', 1920)
+          .Put('height', 1080)
+          .Put('title', 'My App');
+    // 保存文件
+    Config.SaveToFile('config.toml');
+
+    //创建表数组
+    Servers := NewArray
+      .AddTable(
+        NewTable
+          .Put('name', 'web-01')
+          .Put('ip', '192.168.1.10')
+      )
+      .AddTable(
+        NewTable
+          .Put('name', 'db-01')
+          .Put('ip', '192.168.1.20')
+      );
+    Config.SetArray('servers', Servers);
+  
+    // 遍历数组方式一
+    parameters.ForEachTable(
+      procedure(param: TTOMLTable)
+        begin
+          showmessage(param.GetStr('name'));
+        end
+    );
+    // 遍历数组方式二
+    procedure ProcessParameter(param: TTOMLTable);
+      begin
+        showmessage(param.GetStr('name'));
+      end;    
+    parameters.ForEachTable(ProcessParameter);  // 调用
+```
+
+----
+
+以下内容为 ikelaiah 的 TOML Parser for Free Pascal 项目的原始文档：
+
+----
+
 # TOML Parser for Free Pascal
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -7,7 +184,6 @@
 [![Version](https://img.shields.io/badge/Version-1.0.3-blueviolet.svg)]()
 
 A robust [TOML (Tom's Obvious, Minimal Language)](https://toml.io/) parser and serializer for Free Pascal, _almost_ fully compliant with the TOML v1.0.0 specification.
-
 > [!NOTE] 
 > 
 > Our extensive test suite (60 tests) ensures that TOML-FP adheres to the TOML v1.0.0 specification, covering all essential data types, structures, and edge cases.
@@ -574,5 +750,5 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 
 - TOML specification creators and maintainers
 - Free Pascal and Lazarus communities
-- [SilenceCFF](https://github.com/SilenceCCF)
+- [SilenceCCF](https://github.com/SilenceCCF)
 - All contributors to this project
