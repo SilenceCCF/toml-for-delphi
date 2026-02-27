@@ -2,7 +2,6 @@
   This unit implements serialization of TOML data structures to text format.
   It handles converting TOML objects into properly formatted TOML text that follows
   the TOML v1.0.0 specification.
-
   The serializer supports all TOML data types and features:
   - Basic key/value pairs with proper quoting and escaping
   - Tables and inline tables with proper nesting
@@ -10,7 +9,6 @@
   - Basic strings and literal strings with proper escaping
   - Numbers in decimal format (integers and floats)
   - Booleans and dates/times in standard format
-
   Key features:
   - Efficient string building using TStringBuilder
   - Proper indentation and formatting for readability
@@ -19,7 +17,6 @@
   - Proper escaping of special characters in strings
 }
 unit TOML.Serializer;
-
 //{$mode objfpc}{$H+}{$J-}
 
 interface
@@ -27,13 +24,19 @@ interface
 uses
   SysUtils, Classes, TOML.Types, Generics.Collections;
 
+  {$IF CompilerVersion < 20.0}
+
+function CharInSet(C: Char; const CharSet: TSysCharSet): Boolean; inline;
+
+  {$IFEND}
+
 type
   { Key-Value pair type for TOML tables }
   TTOMLKeyValuePair = TPair<string, TTOMLValue>;
-
   { TOML serializer class that converts TOML data to text format
     This class handles the conversion of TOML data structures into properly
     formatted TOML text, following the TOML v1.0.0 specification }
+
   TTOMLSerializer = class
   private
     FStringBuilder: TStringBuilder;  // StringBuilder for efficient string building
@@ -96,26 +99,33 @@ type
       @raises ETOMLSerializerException if value cannot be serialized }
     function Serialize(const AValue: TTOMLValue): string;
   end;
-
 { High-level serialization functions }
 
 { Serializes a TOML value to string format
   @param AValue The value to serialize
   @returns The serialized TOML string
   @raises ETOMLSerializerException if value cannot be serialized }
-function SerializeTOML(const AValue: TTOMLValue): string;
 
+function SerializeTOML(const AValue: TTOMLValue): string;
 { Serializes a TOML value to a file
   @param AValue The value to serialize
   @param AFileName The output file path
   @returns True if successful, False otherwise
   @raises ETOMLSerializerException if value cannot be serialized
   @raises EFileStreamError if file cannot be written }
+
 function SerializeTOMLToFile(const AValue: TTOMLValue; const AFileName: string; BOM: boolean = true): Boolean;
 
 implementation
-
 { High-level function implementations }
+
+{$IF CompilerVersion < 20.0}
+
+function CharInSet(C: Char; const CharSet: TSysCharSet): Boolean;
+begin
+  Result := C in CharSet;
+end;
+{$IFEND}
 
 function SerializeTOML(const AValue: TTOMLValue): string;
 var
@@ -149,7 +159,6 @@ begin
     // Return False on any error
   end;
 end;
-
 { TTOMLSerializer implementation }
 
 constructor TTOMLSerializer.Create;
@@ -202,7 +211,8 @@ begin
     C := AKey[i];
 //    if not ((C in ['A'..'Z']) or (C in ['a'..'z']) or
 //            (C in ['0'..'9']) or (C = '_') or (C = '-')) then
-    if not (CharInSet(C, ['A'..'Z']) or CharInSet(C, ['a'..'z']) or CharInSet(C, ['0'..'9']) or (C = '_') or (C = '-')) then
+    if not (CharInSet(C, ['A'..'Z']) or CharInSet(C, ['a'..'z']) or CharInSet(C, ['0'..'9']) or (C = '_') or (C
+      = '-')) then
       Exit(True);
   end;
 
@@ -360,7 +370,8 @@ begin
     // First write all non-array and non-table values
     for Pair in ATable.Items do
     begin
-      if not ((Pair.Value.ValueType = tvtTable) or ((Pair.Value.ValueType = tvtArray) and (Pair.Value.AsArray.Count > 0) and (Pair.Value.AsArray.GetItem(0).ValueType = tvtTable))) then
+      if not ((Pair.Value.ValueType = tvtTable) or ((Pair.Value.ValueType = tvtArray) and (Pair.Value.AsArray.Count
+        > 0) and (Pair.Value.AsArray.GetItem(0).ValueType = tvtTable))) then
       begin
         // Remove indentation for table key-value pairs
         WriteKey(Pair.Key);
