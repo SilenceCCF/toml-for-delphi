@@ -1,4 +1,4 @@
-﻿unit TOML.Helper;
+unit TOML.Helper;
 
 interface
 
@@ -6,162 +6,204 @@ uses
   SysUtils, Classes, Generics.Collections, TOML.Types, TOML.Parser, TOML.Serializer;
 
 type
-  { TOML Table helper class - Complete API }
+  { TOML Table helper class }
   TTOMLTableHelper = class helper for TTOMLTable
   public
     { ===== READING METHODS ===== }
-    
+
+    { Get string value with default support
+      @param Key Key name, supports dot-separated paths
+      @param DefaultValue Default value if key not found
+      @returns String value or default }
     function GetStr(const Key: string; const DefaultValue: string = ''): string;
+
+    { Get integer value with default support }
     function GetInt(const Key: string; const DefaultValue: Int64 = 0): Int64;
+
+    { Get float value with default support }
     function GetFloat(const Key: string; const DefaultValue: Double = 0.0): Double;
+
+    { Get boolean value with default support }
     function GetBool(const Key: string; const DefaultValue: Boolean = False): Boolean;
+
+    { Get datetime value with default support }
     function GetDateTime(const Key: string; const DefaultValue: TDateTime = 0): TDateTime;
+
+    { Get array reference (returns nil if not found) }
     function GetArray(const Key: string): TTOMLArray;
+
+    { Get table reference (returns nil if not found) }
     function GetTable(const Key: string): TTOMLTable;
+
+    { Check if key exists }
     function HasKey(const Key: string): Boolean;
+
+    { Get list of all keys }
     procedure GetKeys(Keys: TStrings; Recursive: Boolean = False);
-    
-    { ===== WRITING METHODS (Set - for new keys) ===== }
-    
-    { Set string value - auto-creates TTOMLString wrapper
-      @param Key Key name
-      @param Value String value to set
+
+    { ===== WRITING METHODS WITH OVERWRITE CONTROL ===== }
+
+    { Set string value with overwrite control
+      @param Key Key name (simple key only, no paths)
+      @param Value String value
+      @param Overwrite If False and key exists, returns False without changing
+      @returns True if value was set, False if key exists and Overwrite=False }
+    function SetStr(const Key: string; const Value: string; Overwrite: Boolean = True): Boolean;
+
+    { Set integer value with overwrite control
+      @returns True if value was set, False if key exists and Overwrite=False }
+    function SetInt(const Key: string; const Value: Int64; Overwrite: Boolean = True): Boolean;
+
+    { Set float value with overwrite control
+      @returns True if value was set, False if key exists and Overwrite=False }
+    function SetFloat(const Key: string; const Value: Double; Overwrite: Boolean = True): Boolean;
+
+    { Set boolean value with overwrite control
+      @returns True if value was set, False if key exists and Overwrite=False }
+    function SetBool(const Key: string; const Value: Boolean; Overwrite: Boolean = True): Boolean;
+
+    { Set datetime value with overwrite control
+      @returns True if value was set, False if key exists and Overwrite=False }
+    function SetDateTime(const Key: string; const Value: TDateTime; Overwrite: Boolean = True): Boolean;
+
+    { Set array value with overwrite control
+      @param Value Array object (ownership transferred if successful)
+      @returns True if value was set, False if key exists and Overwrite=False
+      @note If returns False, caller retains ownership of Value }
+    function SetArray(const Key: string; Value: TTOMLArray; Overwrite: Boolean = True): Boolean;
+
+    { Set table value with overwrite control
+      @param Value Table object (ownership transferred if successful)
+      @returns True if value was set, False if key exists and Overwrite=False
+      @note If returns False, caller retains ownership of Value }
+    function SetTable(const Key: string; Value: TTOMLTable; Overwrite: Boolean = True): Boolean;
+
+    { ===== BUILDER PATTERN WITH OVERWRITE CONTROL ===== }
+
+    { Put string value - builder pattern
+      @param Overwrite If False and key exists, skips without error
       @returns Self for chaining }
-    function SetStr(const Key: string; const Value: string): TTOMLTable;
-    
-    { Set integer value - auto-creates TTOMLInteger wrapper }
-    function SetInt(const Key: string; const Value: Int64): TTOMLTable;
-    
-    { Set float value - auto-creates TTOMLFloat wrapper }
-    function SetFloat(const Key: string; const Value: Double): TTOMLTable;
-    
-    { Set boolean value - auto-creates TTOMLBoolean wrapper }
-    function SetBool(const Key: string; const Value: Boolean): TTOMLTable;
-    
-    { Set datetime value - auto-creates TTOMLDateTime wrapper }
-    function SetDateTime(const Key: string; const Value: TDateTime): TTOMLTable;
-    
-    { Set array value - takes ownership }
-    function SetArray(const Key: string; Value: TTOMLArray): TTOMLTable;
-    
-    { Set table value - takes ownership }
-    function SetTable(const Key: string; Value: TTOMLTable): TTOMLTable;
-    
-    { ===== BUILDER PATTERN (Put - overloaded for all types) ===== }
-    
-    function Put(const Key: string; const Value: string): TTOMLTable; overload;
-    function Put(const Key: string; const Value: Int64): TTOMLTable; overload;
-    function Put(const Key: string; const Value: Integer): TTOMLTable; overload;
-    function Put(const Key: string; const Value: Double): TTOMLTable; overload;
-    function Put(const Key: string; const Value: Boolean): TTOMLTable; overload;
-    function Put(const Key: string; const Value: TDateTime): TTOMLTable; overload;
-    function Put(const Key: string; Value: TTOMLArray): TTOMLTable; overload;
-    function Put(const Key: string; Value: TTOMLTable): TTOMLTable; overload;
-    
-    { ===== ADD OR SET METHODS (Complete family - update or create) ===== }
-    
-    { Add or update string value - won't throw exception if key exists }
-    function AddOrSetStr(const Key: string; const Value: string): TTOMLTable;
-    
-    { Add or update integer value }
-    function AddOrSetInt(const Key: string; const Value: Int64): TTOMLTable;
-    
-    { Add or update float value }
-    function AddOrSetFloat(const Key: string; const Value: Double): TTOMLTable;
-    
-    { Add or update boolean value }
-    function AddOrSetBool(const Key: string; const Value: Boolean): TTOMLTable;
-    
-    { Add or update datetime value }
-    function AddOrSetDateTime(const Key: string; const Value: TDateTime): TTOMLTable;
-    
-    { Add or update array value }
-    function AddOrSetArray(const Key: string; Value: TTOMLArray): TTOMLTable;
-    
-    { Add or update table value }
-    function AddOrSetTable(const Key: string; Value: TTOMLTable): TTOMLTable;
-    
-    { ===== FILE OPERATIONS ===== }
-    
+    function Put(const Key: string; const Value: string; Overwrite: Boolean = True): TTOMLTable; overload;
+
+    { Put integer value - builder pattern }
+    function Put(const Key: string; const Value: Int64; Overwrite: Boolean = True): TTOMLTable; overload;
+    function Put(const Key: string; const Value: Integer; Overwrite: Boolean = True): TTOMLTable; overload;
+
+    { Put float value - builder pattern }
+    function Put(const Key: string; const Value: Double; Overwrite: Boolean = True): TTOMLTable; overload;
+
+    { Put boolean value - builder pattern }
+    function Put(const Key: string; const Value: Boolean; Overwrite: Boolean = True): TTOMLTable; overload;
+
+    { Put datetime value - builder pattern }
+    function Put(const Key: string; const Value: TDateTime; Overwrite: Boolean = True): TTOMLTable; overload;
+
+    { Put array value - builder pattern }
+    function Put(const Key: string; Value: TTOMLArray; Overwrite: Boolean = True): TTOMLTable; overload;
+
+    { Put table value - builder pattern }
+    function Put(const Key: string; Value: TTOMLTable; Overwrite: Boolean = True): TTOMLTable; overload;
+
+    { ===== FILE OPERATIONS WITH ERROR HANDLING ===== }
+
     { Load TOML from file into this table
       @param FileName Path to TOML file
-      @returns Self for chaining }
-    function LoadFromFile(const FileName: string): TTOMLTable;
-    
+      @param ClearExisting If True, clears table before loading
+      @returns True if successful, False on error }
+    function LoadFromFile(const FileName: string; ClearExisting: Boolean = True): Boolean;
+
     { Save this table to TOML file
       @param FileName Path to output file
-      @param WriteBOM Whether to write UTF-8 BOM (default: true)
-      @returns True if successful }
+      @param WriteBOM Whether to write UTF-8 BOM
+      @returns True if successful, False on error }
     function SaveToFile(const FileName: string; WriteBOM: Boolean = True): Boolean;
-    
+
     { ===== SERIALIZATION ===== }
-    
+
     { Serialize this table to TOML string
-      @returns TOML formatted string }
+      @returns TOML formatted string, empty string on error }
     function ToString: string; reintroduce;
-    
-    { ===== UTILITY METHODS ===== }
-    
+
+    { ===== SAFE UTILITY METHODS ===== }
+
     { Remove a key if it exists
       @param Key Key name
-      @returns True if key was removed }
-    function Remove(const Key: string): Boolean;
-    
-    { Clear all keys from table }
-    procedure Clear;
-    
+      @param FreeValue If True, frees the value object
+      @returns True if key was removed, False if not found }
+    function Remove(const Key: string; FreeValue: Boolean = True): Boolean;
+
+    { Clear all keys from table
+      @param FreeValues If True, frees all value objects }
+    procedure Clear(FreeValues: Boolean = True);
+
     { Get count of keys in table }
     function Count: Integer;
+
+    { Try to get value safely
+      @param Key Key name
+      @param Value Output parameter
+      @returns True if key exists and value retrieved }
+    function TryGetValue(const Key: string; out Value: TTOMLValue): Boolean;
   end;
-  
-  { TOML Array helper class - Complete API }
+
+  { TOML Array helper class - Complete optimized API }
   TTOMLArrayHelper = class helper for TTOMLArray
   public
     { ===== READING METHODS ===== }
-    
+
     function GetStr(Index: Integer; const DefaultValue: string = ''): string;
     function GetInt(Index: Integer; const DefaultValue: Int64 = 0): Int64;
     function GetFloat(Index: Integer; const DefaultValue: Double = 0.0): Double;
     function GetBool(Index: Integer; const DefaultValue: Boolean = False): Boolean;
     function GetTable(Index: Integer): TTOMLTable;
     procedure ForEachTable(Proc: TProc<TTOMLTable>);
-    
-    { ===== WRITING METHODS ===== }
-    
-    { Add string value - auto-creates TTOMLString wrapper
-      @returns Self for chaining }
+
+    { ===== WRITING METHODS WITH SAFETY ===== }
+
+    { Add string value - auto-creates wrapper
+      @returns Self for chaining, nil on error }
     function AddStr(const Value: string): TTOMLArray;
-    
-    { Add integer value - auto-creates TTOMLInteger wrapper }
+
+    { Add integer value }
     function AddInt(const Value: Int64): TTOMLArray;
-    
-    { Add float value - auto-creates TTOMLFloat wrapper }
+
+    { Add float value }
     function AddFloat(const Value: Double): TTOMLArray;
-    
-    { Add boolean value - auto-creates TTOMLBoolean wrapper }
+
+    { Add boolean value }
     function AddBool(const Value: Boolean): TTOMLArray;
-    
-    { Add datetime value - auto-creates TTOMLDateTime wrapper }
+
+    { Add datetime value }
     function AddDateTime(const Value: TDateTime): TTOMLArray;
-    
+
     { Add table value - takes ownership }
     function AddTable(Value: TTOMLTable): TTOMLArray;
-    
+
     { Add array value - takes ownership }
     function AddArray(Value: TTOMLArray): TTOMLArray;
-    
+
     { ===== SERIALIZATION ===== }
-    
+
     { Serialize this array to TOML string }
     function ToString: string; reintroduce;
-    
-    { ===== UTILITY METHODS ===== }
-    
-    { Clear all items from array }
-    procedure Clear;
-    
-    { Remove item at index }
-    function RemoveAt(Index: Integer): Boolean;
+
+    { ===== SAFE UTILITY METHODS ===== }
+
+    { Clear all items from array
+      @param FreeItems If True, frees all item objects }
+    procedure Clear(FreeItems: Boolean = True);
+
+    { Remove item at index
+      @param Index Item index
+      @param FreeItem If True, frees the item object
+      @returns True if removed, False if index invalid }
+    function RemoveAt(Index: Integer; FreeItem: Boolean = True): Boolean;
+
+    { Try to get item safely
+      @param Index Item index
+      @param Value Output parameter
+      @returns True if index valid and value retrieved }
+    function TryGetItem(Index: Integer; out Value: TTOMLValue): Boolean;
   end;
 
 { ===== GLOBAL FACTORY FUNCTIONS ===== }
@@ -172,14 +214,10 @@ function NewTable: TTOMLTable;
 { Create an empty TOML array }
 function NewArray: TTOMLArray;
 
-{ Load TOML from file - simplified API
-  @param FileName Path to TOML file
-  @returns Parsed TTOMLTable }
+{ Load TOML from file - returns nil on error }
 function LoadTOML(const FileName: string): TTOMLTable;
 
-{ Load TOML from string - simplified API
-  @param TOML TOML formatted string
-  @returns Parsed TTOMLTable }
+{ Load TOML from string - returns nil on error }
 function ParseTOML(const Str: string): TTOMLTable;
 
 { ===== HELPER FUNCTIONS (Internal) ===== }
@@ -207,12 +245,20 @@ end;
 
 function LoadTOML(const FileName: string): TTOMLTable;
 begin
-  Result := TOML.Parser.ParseTOMLFile(FileName);
+  try
+    Result := TOML.Parser.ParseTOMLFile(FileName);
+  except
+    Result := nil;
+  end;
 end;
 
 function ParseTOML(const Str: string): TTOMLTable;
 begin
-  Result := TOML.Parser.ParseTOMLString(Str);
+  try
+    Result := TOML.Parser.ParseTOMLString(Str);
+  except
+    Result := nil;
+  end;
 end;
 
 { ===== Helper Functions ===== }
@@ -227,7 +273,7 @@ begin
     Parts.Delimiter := '.';
     Parts.StrictDelimiter := True;
     Parts.DelimitedText := Path;
-    
+
     SetLength(Result, Parts.Count);
     for i := 0 to Parts.Count - 1 do
       Result[i] := Trim(Parts[i]);
@@ -244,35 +290,42 @@ var
   i: Integer;
 begin
   Result := nil;
-  
+
+  if not Assigned(Root) then
+    Exit;
+
   if Path = '' then
   begin
     Result := Root;
     Exit;
   end;
-  
-  Parts := SplitPath(Path);
-  CurrentTable := Root;
-  
-  for i := 0 to High(Parts) do
-  begin
-    if not CurrentTable.TryGetValue(Parts[i], Value) then
-      Exit;
-      
-    if Value is TTOMLTable then
-      CurrentTable := TTOMLTable(Value)
-    else if (Value is TTOMLArray) and (i < High(Parts)) then
+
+  try
+    Parts := SplitPath(Path);
+    CurrentTable := Root;
+
+    for i := 0 to High(Parts) do
     begin
-      if TTOMLArray(Value).Count > 0 then
-        CurrentTable := TTOMLTable(TTOMLArray(Value).GetItem(TTOMLArray(Value).Count - 1))
+      if not CurrentTable.TryGetValue(Parts[i], Value) then
+        Exit;
+
+      if Value is TTOMLTable then
+        CurrentTable := TTOMLTable(Value)
+      else if (Value is TTOMLArray) and (i < High(Parts)) then
+      begin
+        if TTOMLArray(Value).Count > 0 then
+          CurrentTable := TTOMLTable(TTOMLArray(Value).GetItem(TTOMLArray(Value).Count - 1))
+        else
+          Exit;
+      end
       else
         Exit;
-    end
-    else
-      Exit;
+    end;
+
+    Result := CurrentTable;
+  except
+    Result := nil;
   end;
-  
-  Result := CurrentTable;
 end;
 
 function GetValueFromPath(Root: TTOMLTable; const Path: string): TTOMLValue;
@@ -284,27 +337,34 @@ var
   i: Integer;
 begin
   Result := nil;
-  
+
+  if not Assigned(Root) then
+    Exit;
+
   if Path = '' then
     Exit;
-    
-  Parts := SplitPath(Path);
-  
-  if Length(Parts) = 1 then
-  begin
-    Root.TryGetValue(Path, Result);
-  end
-  else
-  begin
-    LastKey := Parts[High(Parts)];
-    
-    ParentPath := Parts[0];
-    for i := 1 to High(Parts) - 1 do
-      ParentPath := ParentPath + '.' + Parts[i];
-    
-    CurrentTable := NavigateToTable(Root, ParentPath);
-    if Assigned(CurrentTable) then
-      CurrentTable.TryGetValue(LastKey, Result);
+
+  try
+    Parts := SplitPath(Path);
+
+    if Length(Parts) = 1 then
+    begin
+      Root.TryGetValue(Path, Result);
+    end
+    else
+    begin
+      LastKey := Parts[High(Parts)];
+
+      ParentPath := Parts[0];
+      for i := 1 to High(Parts) - 1 do
+        ParentPath := ParentPath + '.' + Parts[i];
+
+      CurrentTable := NavigateToTable(Root, ParentPath);
+      if Assigned(CurrentTable) then
+        CurrentTable.TryGetValue(LastKey, Result);
+    end;
+  except
+    Result := nil;
   end;
 end;
 
@@ -314,92 +374,124 @@ function TTOMLTableHelper.GetStr(const Key: string; const DefaultValue: string):
 var
   Value: TTOMLValue;
 begin
-  Value := GetValueFromPath(Self, Key);
-  
-  if Assigned(Value) and (Value is TTOMLString) then
-    Result := Value.AsString
-  else
+  try
+    Value := GetValueFromPath(Self, Key);
+
+    if Assigned(Value) and (Value is TTOMLString) then
+      Result := Value.AsString
+    else
+      Result := DefaultValue;
+  except
     Result := DefaultValue;
+  end;
 end;
 
 function TTOMLTableHelper.GetInt(const Key: string; const DefaultValue: Int64): Int64;
 var
   Value: TTOMLValue;
 begin
-  Value := GetValueFromPath(Self, Key);
-  
-  if Assigned(Value) and (Value is TTOMLInteger) then
-    Result := Value.AsInteger
-  else
+  try
+    Value := GetValueFromPath(Self, Key);
+
+    if Assigned(Value) and (Value is TTOMLInteger) then
+      Result := Value.AsInteger
+    else
+      Result := DefaultValue;
+  except
     Result := DefaultValue;
+  end;
 end;
 
 function TTOMLTableHelper.GetFloat(const Key: string; const DefaultValue: Double): Double;
 var
   Value: TTOMLValue;
 begin
-  Value := GetValueFromPath(Self, Key);
-  
-  if Assigned(Value) then
-  begin
-    if Value is TTOMLFloat then
-      Result := Value.AsFloat
-    else if Value is TTOMLInteger then
-      Result := Value.AsInteger
+  try
+    Value := GetValueFromPath(Self, Key);
+
+    if Assigned(Value) then
+    begin
+      if Value is TTOMLFloat then
+        Result := Value.AsFloat
+      else if Value is TTOMLInteger then
+        Result := Value.AsInteger
+      else
+        Result := DefaultValue;
+    end
     else
       Result := DefaultValue;
-  end
-  else
+  except
     Result := DefaultValue;
+  end;
 end;
 
 function TTOMLTableHelper.GetBool(const Key: string; const DefaultValue: Boolean): Boolean;
 var
   Value: TTOMLValue;
 begin
-  Value := GetValueFromPath(Self, Key);
-  
-  if Assigned(Value) and (Value is TTOMLBoolean) then
-    Result := Value.AsBoolean
-  else
+  try
+    Value := GetValueFromPath(Self, Key);
+
+    if Assigned(Value) and (Value is TTOMLBoolean) then
+      Result := Value.AsBoolean
+    else
+      Result := DefaultValue;
+  except
     Result := DefaultValue;
+  end;
 end;
 
 function TTOMLTableHelper.GetDateTime(const Key: string; const DefaultValue: TDateTime): TDateTime;
 var
   Value: TTOMLValue;
 begin
-  Value := GetValueFromPath(Self, Key);
-  
-  if Assigned(Value) and (Value is TTOMLDateTime) then
-    Result := Value.AsDateTime
-  else
+  try
+    Value := GetValueFromPath(Self, Key);
+
+    if Assigned(Value) and (Value is TTOMLDateTime) then
+      Result := Value.AsDateTime
+    else
+      Result := DefaultValue;
+  except
     Result := DefaultValue;
+  end;
 end;
 
 function TTOMLTableHelper.GetArray(const Key: string): TTOMLArray;
 var
   Value: TTOMLValue;
 begin
-  Value := GetValueFromPath(Self, Key);
-  
-  if Assigned(Value) and (Value is TTOMLArray) then
-    Result := TTOMLArray(Value)
-  else
+  try
+    Value := GetValueFromPath(Self, Key);
+
+    if Assigned(Value) and (Value is TTOMLArray) then
+      Result := TTOMLArray(Value)
+    else
+      Result := nil;
+  except
     Result := nil;
+  end;
 end;
 
 function TTOMLTableHelper.GetTable(const Key: string): TTOMLTable;
 begin
-  Result := NavigateToTable(Self, Key);
+  try
+    Result := NavigateToTable(Self, Key);
+  except
+    Result := nil;
+  end;
 end;
 
 function TTOMLTableHelper.HasKey(const Key: string): Boolean;
 var
   Value: TTOMLValue;
 begin
-  Value := GetValueFromPath(Self, Key);
-  Result := Assigned(Value);
+  try
+    Value := GetValueFromPath(Self, Key);
+    Result := Assigned(Value);
+  except
+    Result := False;
+  end;
 end;
 
 procedure TTOMLTableHelper.GetKeys(Keys: TStrings; Recursive: Boolean);
@@ -409,243 +501,387 @@ var
   SubKeys: TStringList;
   i: Integer;
 begin
-  Keys.Clear;
-  
-  for Pair in Self.Items do
-  begin
-    Keys.Add(Pair.Key);
-    
-    if Recursive and (Pair.Value is TTOMLTable) then
+  if not Assigned(Keys) then
+    Exit;
+
+  try
+    Keys.Clear;
+
+    for Pair in Self.Items do
     begin
-      SubTable := TTOMLTable(Pair.Value);
-      SubKeys := TStringList.Create;
-      try
-        SubTable.GetKeys(SubKeys, True);
-        for i := 0 to SubKeys.Count - 1 do
-          Keys.Add(Pair.Key + '.' + SubKeys[i]);
-      finally
-        SubKeys.Free;
+      Keys.Add(Pair.Key);
+
+      if Recursive and (Pair.Value is TTOMLTable) then
+      begin
+        SubTable := TTOMLTable(Pair.Value);
+        SubKeys := TStringList.Create;
+        try
+          SubTable.GetKeys(SubKeys, True);
+          for i := 0 to SubKeys.Count - 1 do
+            Keys.Add(Pair.Key + '.' + SubKeys[i]);
+        finally
+          SubKeys.Free;
+        end;
       end;
     end;
+  except
+    // Silently fail
   end;
 end;
 
-{ ===== TTOMLTableHelper - Writing Methods (Set) ===== }
-
-function TTOMLTableHelper.SetStr(const Key: string; const Value: string): TTOMLTable;
+function TTOMLTableHelper.TryGetValue(const Key: string; out Value: TTOMLValue): Boolean;
 begin
-  Self.Add(Key, TTOMLString.Create(Value));
-  Result := Self;
+  try
+    Value := GetValueFromPath(Self, Key);
+    Result := Assigned(Value);
+  except
+    Value := nil;
+    Result := False;
+  end;
 end;
 
-function TTOMLTableHelper.SetInt(const Key: string; const Value: Int64): TTOMLTable;
+{ ===== TTOMLTableHelper - Writing Methods with Overwrite Control ===== }
+
+function TTOMLTableHelper.SetStr(const Key: string; const Value: string; Overwrite: Boolean): Boolean;
+var
+  OldValue: TTOMLValue;
+  NewValue: TTOMLString;
 begin
-  Self.Add(Key, TTOMLInteger.Create(Value));
-  Result := Self;
+  Result := False;
+
+  try
+    // Check if key exists
+    if Self.Items.TryGetValue(Key, OldValue) then
+    begin
+      if not Overwrite then
+        Exit(False);
+
+      // Free old value before replacing
+      OldValue.Free;
+    end;
+
+    // Create new value
+    NewValue := TTOMLString.Create(Value);
+    try
+      Self.Items.AddOrSetValue(Key, NewValue);
+      Result := True;
+    except
+      NewValue.Free;
+      raise;
+    end;
+  except
+    Result := False;
+  end;
 end;
 
-function TTOMLTableHelper.SetFloat(const Key: string; const Value: Double): TTOMLTable;
+function TTOMLTableHelper.SetInt(const Key: string; const Value: Int64; Overwrite: Boolean): Boolean;
+var
+  OldValue: TTOMLValue;
+  NewValue: TTOMLInteger;
 begin
-  Self.Add(Key, TTOMLFloat.Create(Value));
-  Result := Self;
+  Result := False;
+
+  try
+    if Self.Items.TryGetValue(Key, OldValue) then
+    begin
+      if not Overwrite then
+        Exit(False);
+      OldValue.Free;
+    end;
+
+    NewValue := TTOMLInteger.Create(Value);
+    try
+      Self.Items.AddOrSetValue(Key, NewValue);
+      Result := True;
+    except
+      NewValue.Free;
+      raise;
+    end;
+  except
+    Result := False;
+  end;
 end;
 
-function TTOMLTableHelper.SetBool(const Key: string; const Value: Boolean): TTOMLTable;
+function TTOMLTableHelper.SetFloat(const Key: string; const Value: Double; Overwrite: Boolean): Boolean;
+var
+  OldValue: TTOMLValue;
+  NewValue: TTOMLFloat;
 begin
-  Self.Add(Key, TTOMLBoolean.Create(Value));
-  Result := Self;
+  Result := False;
+
+  try
+    if Self.Items.TryGetValue(Key, OldValue) then
+    begin
+      if not Overwrite then
+        Exit(False);
+      OldValue.Free;
+    end;
+
+    NewValue := TTOMLFloat.Create(Value);
+    try
+      Self.Items.AddOrSetValue(Key, NewValue);
+      Result := True;
+    except
+      NewValue.Free;
+      raise;
+    end;
+  except
+    Result := False;
+  end;
 end;
 
-function TTOMLTableHelper.SetDateTime(const Key: string; const Value: TDateTime): TTOMLTable;
+function TTOMLTableHelper.SetBool(const Key: string; const Value: Boolean; Overwrite: Boolean): Boolean;
+var
+  OldValue: TTOMLValue;
+  NewValue: TTOMLBoolean;
 begin
-  Self.Add(Key, TTOMLDateTime.Create(Value));
-  Result := Self;
+  Result := False;
+
+  try
+    if Self.Items.TryGetValue(Key, OldValue) then
+    begin
+      if not Overwrite then
+        Exit(False);
+      OldValue.Free;
+    end;
+
+    NewValue := TTOMLBoolean.Create(Value);
+    try
+      Self.Items.AddOrSetValue(Key, NewValue);
+      Result := True;
+    except
+      NewValue.Free;
+      raise;
+    end;
+  except
+    Result := False;
+  end;
 end;
 
-function TTOMLTableHelper.SetArray(const Key: string; Value: TTOMLArray): TTOMLTable;
+function TTOMLTableHelper.SetDateTime(const Key: string; const Value: TDateTime; Overwrite: Boolean): Boolean;
+var
+  OldValue: TTOMLValue;
+  NewValue: TTOMLDateTime;
 begin
-  Self.Add(Key, Value);
-  Result := Self;
+  Result := False;
+
+  try
+    if Self.Items.TryGetValue(Key, OldValue) then
+    begin
+      if not Overwrite then
+        Exit(False);
+      OldValue.Free;
+    end;
+
+    NewValue := TTOMLDateTime.Create(Value);
+    try
+      Self.Items.AddOrSetValue(Key, NewValue);
+      Result := True;
+    except
+      NewValue.Free;
+      raise;
+    end;
+  except
+    Result := False;
+  end;
 end;
 
-function TTOMLTableHelper.SetTable(const Key: string; Value: TTOMLTable): TTOMLTable;
-begin
-  Self.Add(Key, Value);
-  Result := Self;
-end;
-
-{ ===== TTOMLTableHelper - Builder Pattern (Put) ===== }
-
-function TTOMLTableHelper.Put(const Key: string; const Value: string): TTOMLTable;
-begin
-  Result := SetStr(Key, Value);
-end;
-
-function TTOMLTableHelper.Put(const Key: string; const Value: Int64): TTOMLTable;
-begin
-  Result := SetInt(Key, Value);
-end;
-
-function TTOMLTableHelper.Put(const Key: string; const Value: Integer): TTOMLTable;
-begin
-  Result := SetInt(Key, Value);
-end;
-
-function TTOMLTableHelper.Put(const Key: string; const Value: Double): TTOMLTable;
-begin
-  Result := SetFloat(Key, Value);
-end;
-
-function TTOMLTableHelper.Put(const Key: string; const Value: Boolean): TTOMLTable;
-begin
-  Result := SetBool(Key, Value);
-end;
-
-function TTOMLTableHelper.Put(const Key: string; const Value: TDateTime): TTOMLTable;
-begin
-  Result := SetDateTime(Key, Value);
-end;
-
-function TTOMLTableHelper.Put(const Key: string; Value: TTOMLArray): TTOMLTable;
-begin
-  Result := SetArray(Key, Value);
-end;
-
-function TTOMLTableHelper.Put(const Key: string; Value: TTOMLTable): TTOMLTable;
-begin
-  Result := SetTable(Key, Value);
-end;
-
-{ ===== TTOMLTableHelper - AddOrSet Methods (Complete family) ===== }
-
-function TTOMLTableHelper.AddOrSetStr(const Key: string; const Value: string): TTOMLTable;
+function TTOMLTableHelper.SetArray(const Key: string; Value: TTOMLArray; Overwrite: Boolean): Boolean;
 var
   OldValue: TTOMLValue;
 begin
-  if Self.Items.TryGetValue(Key, OldValue) then
-    OldValue.Free;
-  Self.Items.AddOrSetValue(Key, TTOMLString.Create(Value));
-  Result := Self;
+  Result := False;
+
+  if not Assigned(Value) then
+    Exit;
+
+  try
+    if Self.Items.TryGetValue(Key, OldValue) then
+    begin
+      if not Overwrite then
+        Exit(False);
+      OldValue.Free;
+    end;
+
+    Self.Items.AddOrSetValue(Key, Value);
+    Result := True;
+  except
+    Result := False;
+  end;
 end;
 
-function TTOMLTableHelper.AddOrSetInt(const Key: string; const Value: Int64): TTOMLTable;
+function TTOMLTableHelper.SetTable(const Key: string; Value: TTOMLTable; Overwrite: Boolean): Boolean;
 var
   OldValue: TTOMLValue;
 begin
-  if Self.Items.TryGetValue(Key, OldValue) then
-    OldValue.Free;
-  Self.Items.AddOrSetValue(Key, TTOMLInteger.Create(Value));
-  Result := Self;
+  Result := False;
+
+  if not Assigned(Value) then
+    Exit;
+
+  try
+    if Self.Items.TryGetValue(Key, OldValue) then
+    begin
+      if not Overwrite then
+        Exit(False);
+      OldValue.Free;
+    end;
+
+    Self.Items.AddOrSetValue(Key, Value);
+    Result := True;
+  except
+    Result := False;
+  end;
 end;
 
-function TTOMLTableHelper.AddOrSetFloat(const Key: string; const Value: Double): TTOMLTable;
-var
-  OldValue: TTOMLValue;
+{ ===== TTOMLTableHelper - Builder Pattern with Overwrite Control ===== }
+
+function TTOMLTableHelper.Put(const Key: string; const Value: string; Overwrite: Boolean): TTOMLTable;
 begin
-  if Self.Items.TryGetValue(Key, OldValue) then
-    OldValue.Free;
-  Self.Items.AddOrSetValue(Key, TTOMLFloat.Create(Value));
+  SetStr(Key, Value, Overwrite);
   Result := Self;
 end;
 
-function TTOMLTableHelper.AddOrSetBool(const Key: string; const Value: Boolean): TTOMLTable;
-var
-  OldValue: TTOMLValue;
+function TTOMLTableHelper.Put(const Key: string; const Value: Int64; Overwrite: Boolean): TTOMLTable;
 begin
-  if Self.Items.TryGetValue(Key, OldValue) then
-    OldValue.Free;
-  Self.Items.AddOrSetValue(Key, TTOMLBoolean.Create(Value));
+  SetInt(Key, Value, Overwrite);
   Result := Self;
 end;
 
-function TTOMLTableHelper.AddOrSetDateTime(const Key: string; const Value: TDateTime): TTOMLTable;
-var
-  OldValue: TTOMLValue;
+function TTOMLTableHelper.Put(const Key: string; const Value: Integer; Overwrite: Boolean): TTOMLTable;
 begin
-  if Self.Items.TryGetValue(Key, OldValue) then
-    OldValue.Free;
-  Self.Items.AddOrSetValue(Key, TTOMLDateTime.Create(Value));
+  SetInt(Key, Value, Overwrite);
   Result := Self;
 end;
 
-function TTOMLTableHelper.AddOrSetArray(const Key: string; Value: TTOMLArray): TTOMLTable;
-var
-  OldValue: TTOMLValue;
+function TTOMLTableHelper.Put(const Key: string; const Value: Double; Overwrite: Boolean): TTOMLTable;
 begin
-  if Self.Items.TryGetValue(Key, OldValue) then
-    OldValue.Free;
-  Self.Items.AddOrSetValue(Key, Value);
+  SetFloat(Key, Value, Overwrite);
   Result := Self;
 end;
 
-function TTOMLTableHelper.AddOrSetTable(const Key: string; Value: TTOMLTable): TTOMLTable;
-var
-  OldValue: TTOMLValue;
+function TTOMLTableHelper.Put(const Key: string; const Value: Boolean; Overwrite: Boolean): TTOMLTable;
 begin
-  if Self.Items.TryGetValue(Key, OldValue) then
-    OldValue.Free;
-  Self.Items.AddOrSetValue(Key, Value);
+  SetBool(Key, Value, Overwrite);
   Result := Self;
 end;
 
-{ ===== TTOMLTableHelper - File Operations ===== }
+function TTOMLTableHelper.Put(const Key: string; const Value: TDateTime; Overwrite: Boolean): TTOMLTable;
+begin
+  SetDateTime(Key, Value, Overwrite);
+  Result := Self;
+end;
 
-function TTOMLTableHelper.LoadFromFile(const FileName: string): TTOMLTable;
+function TTOMLTableHelper.Put(const Key: string; Value: TTOMLArray; Overwrite: Boolean): TTOMLTable;
+begin
+  SetArray(Key, Value, Overwrite);
+  Result := Self;
+end;
+
+function TTOMLTableHelper.Put(const Key: string; Value: TTOMLTable; Overwrite: Boolean): TTOMLTable;
+begin
+  SetTable(Key, Value, Overwrite);
+  Result := Self;
+end;
+
+{ ===== TTOMLTableHelper - File Operations with Error Handling ===== }
+
+function TTOMLTableHelper.LoadFromFile(const FileName: string; ClearExisting: Boolean): Boolean;
 var
   LoadedTable: TTOMLTable;
   Pair: TPair<string, TTOMLValue>;
 begin
-  LoadedTable := TOML.Parser.ParseTOMLFile(FileName);
+  Result := False;
+
   try
-    // Copy all items from loaded table to self
-    for Pair in LoadedTable.Items do
-      Self.Items.Add(Pair.Key, Pair.Value);
-  finally
-    // Don't free the values, they've been transferred
-    LoadedTable.Items.Clear;
-    LoadedTable.Free;
+    LoadedTable := TOML.Parser.ParseTOMLFile(FileName);
+    if not Assigned(LoadedTable) then
+      Exit;
+
+    try
+      if ClearExisting then
+        Self.Clear(True);
+
+      // Transfer all items from loaded table to self
+      for Pair in LoadedTable.Items do
+        Self.Items.Add(Pair.Key, Pair.Value);
+
+      // Don't free the values, they've been transferred
+      LoadedTable.Items.Clear;
+      Result := True;
+    finally
+      LoadedTable.Free;
+    end;
+  except
+    Result := False;
   end;
-  Result := Self;
 end;
 
 function TTOMLTableHelper.SaveToFile(const FileName: string; WriteBOM: Boolean): Boolean;
 begin
-  Result := TOML.Serializer.SerializeTOMLToFile(Self, FileName, WriteBOM);
+  try
+    Result := TOML.Serializer.SerializeTOMLToFile(Self, FileName, WriteBOM);
+  except
+    Result := False;
+  end;
 end;
 
 { ===== TTOMLTableHelper - Serialization ===== }
 
 function TTOMLTableHelper.ToString: string;
 begin
-  Result := TOML.Serializer.SerializeTOML(Self);
-end;
-
-{ ===== TTOMLTableHelper - Utility Methods ===== }
-
-function TTOMLTableHelper.Remove(const Key: string): Boolean;
-var
-  Value: TTOMLValue;
-begin
-  Result := Self.Items.TryGetValue(Key, Value);
-  if Result then
-  begin
-    Value.Free;
-    Self.Items.Remove(Key);
+  try
+    Result := TOML.Serializer.SerializeTOML(Self);
+  except
+    Result := '';
   end;
 end;
 
-procedure TTOMLTableHelper.Clear;
+{ ===== TTOMLTableHelper - Safe Utility Methods ===== }
+
+function TTOMLTableHelper.Remove(const Key: string; FreeValue: Boolean): Boolean;
 var
   Value: TTOMLValue;
 begin
-  for Value in Self.Items.Values do
-    Value.Free;
-  Self.Items.Clear;
+  Result := False;
+
+  try
+    Result := Self.Items.TryGetValue(Key, Value);
+    if Result then
+    begin
+      if FreeValue and Assigned(Value) then
+        Value.Free;
+      Self.Items.Remove(Key);
+    end;
+  except
+    Result := False;
+  end;
+end;
+
+procedure TTOMLTableHelper.Clear(FreeValues: Boolean);
+var
+  Value: TTOMLValue;
+begin
+  try
+    if FreeValues then
+    begin
+      for Value in Self.Items.Values do
+        if Assigned(Value) then
+          Value.Free;
+    end;
+    Self.Items.Clear;
+  except
+    // Silently fail
+  end;
 end;
 
 function TTOMLTableHelper.Count: Integer;
 begin
-  Result := Self.Items.Count;
+  try
+    Result := Self.Items.Count;
+  except
+    Result := 0;
+  end;
 end;
 
 { ===== TTOMLArrayHelper - Reading Methods ===== }
@@ -654,82 +890,107 @@ function TTOMLArrayHelper.GetStr(Index: Integer; const DefaultValue: string): st
 var
   Item: TTOMLValue;
 begin
-  if (Index >= 0) and (Index < Self.Count) then
-  begin
-    Item := Self.GetItem(Index);
-    if Item is TTOMLString then
-      Result := Item.AsString
+  try
+    if (Index >= 0) and (Index < Self.Count) then
+    begin
+      Item := Self.GetItem(Index);
+      if Assigned(Item) and (Item is TTOMLString) then
+        Result := Item.AsString
+      else
+        Result := DefaultValue;
+    end
     else
       Result := DefaultValue;
-  end
-  else
+  except
     Result := DefaultValue;
+  end;
 end;
 
 function TTOMLArrayHelper.GetInt(Index: Integer; const DefaultValue: Int64): Int64;
 var
   Item: TTOMLValue;
 begin
-  if (Index >= 0) and (Index < Self.Count) then
-  begin
-    Item := Self.GetItem(Index);
-    if Item is TTOMLInteger then
-      Result := Item.AsInteger
+  try
+    if (Index >= 0) and (Index < Self.Count) then
+    begin
+      Item := Self.GetItem(Index);
+      if Assigned(Item) and (Item is TTOMLInteger) then
+        Result := Item.AsInteger
+      else
+        Result := DefaultValue;
+    end
     else
       Result := DefaultValue;
-  end
-  else
+  except
     Result := DefaultValue;
+  end;
 end;
 
 function TTOMLArrayHelper.GetFloat(Index: Integer; const DefaultValue: Double): Double;
 var
   Item: TTOMLValue;
 begin
-  if (Index >= 0) and (Index < Self.Count) then
-  begin
-    Item := Self.GetItem(Index);
-    if Item is TTOMLFloat then
-      Result := Item.AsFloat
-    else if Item is TTOMLInteger then
-      Result := Item.AsInteger
+  try
+    if (Index >= 0) and (Index < Self.Count) then
+    begin
+      Item := Self.GetItem(Index);
+      if Assigned(Item) then
+      begin
+        if Item is TTOMLFloat then
+          Result := Item.AsFloat
+        else if Item is TTOMLInteger then
+          Result := Item.AsInteger
+        else
+          Result := DefaultValue;
+      end
+      else
+        Result := DefaultValue;
+    end
     else
       Result := DefaultValue;
-  end
-  else
+  except
     Result := DefaultValue;
+  end;
 end;
 
 function TTOMLArrayHelper.GetBool(Index: Integer; const DefaultValue: Boolean): Boolean;
 var
   Item: TTOMLValue;
 begin
-  if (Index >= 0) and (Index < Self.Count) then
-  begin
-    Item := Self.GetItem(Index);
-    if Item is TTOMLBoolean then
-      Result := Item.AsBoolean
+  try
+    if (Index >= 0) and (Index < Self.Count) then
+    begin
+      Item := Self.GetItem(Index);
+      if Assigned(Item) and (Item is TTOMLBoolean) then
+        Result := Item.AsBoolean
+      else
+        Result := DefaultValue;
+    end
     else
       Result := DefaultValue;
-  end
-  else
+  except
     Result := DefaultValue;
+  end;
 end;
 
 function TTOMLArrayHelper.GetTable(Index: Integer): TTOMLTable;
 var
   Item: TTOMLValue;
 begin
-  if (Index >= 0) and (Index < Self.Count) then
-  begin
-    Item := Self.GetItem(Index);
-    if Item is TTOMLTable then
-      Result := TTOMLTable(Item)
+  try
+    if (Index >= 0) and (Index < Self.Count) then
+    begin
+      Item := Self.GetItem(Index);
+      if Assigned(Item) and (Item is TTOMLTable) then
+        Result := TTOMLTable(Item)
+      else
+        Result := nil;
+    end
     else
       Result := nil;
-  end
-  else
+  except
     Result := nil;
+  end;
 end;
 
 procedure TTOMLArrayHelper.ForEachTable(Proc: TProc<TTOMLTable>);
@@ -737,86 +998,200 @@ var
   i: Integer;
   Item: TTOMLValue;
 begin
-  for i := 0 to Self.Count - 1 do
-  begin
-    Item := Self.GetItem(i);
-    if Item is TTOMLTable then
-      Proc(TTOMLTable(Item));
+  if not Assigned(Proc) then
+    Exit;
+
+  try
+    for i := 0 to Self.Count - 1 do
+    begin
+      Item := Self.GetItem(i);
+      if Assigned(Item) and (Item is TTOMLTable) then
+        Proc(TTOMLTable(Item));
+    end;
+  except
+    // Silently fail
   end;
 end;
 
-{ ===== TTOMLArrayHelper - Writing Methods ===== }
+function TTOMLArrayHelper.TryGetItem(Index: Integer; out Value: TTOMLValue): Boolean;
+begin
+  try
+    Result := (Index >= 0) and (Index < Self.Count);
+    if Result then
+      Value := Self.GetItem(Index)
+    else
+      Value := nil;
+  except
+    Value := nil;
+    Result := False;
+  end;
+end;
+
+{ ===== TTOMLArrayHelper - Writing Methods with Safety ===== }
 
 function TTOMLArrayHelper.AddStr(const Value: string): TTOMLArray;
+var
+  NewValue: TTOMLString;
 begin
-  Self.Add(TTOMLString.Create(Value));
   Result := Self;
+  try
+    NewValue := TTOMLString.Create(Value);
+    try
+      Self.Add(NewValue);
+    except
+      NewValue.Free;
+      Result := nil;
+    end;
+  except
+    Result := nil;
+  end;
 end;
 
 function TTOMLArrayHelper.AddInt(const Value: Int64): TTOMLArray;
+var
+  NewValue: TTOMLInteger;
 begin
-  Self.Add(TTOMLInteger.Create(Value));
   Result := Self;
+  try
+    NewValue := TTOMLInteger.Create(Value);
+    try
+      Self.Add(NewValue);
+    except
+      NewValue.Free;
+      Result := nil;
+    end;
+  except
+    Result := nil;
+  end;
 end;
 
 function TTOMLArrayHelper.AddFloat(const Value: Double): TTOMLArray;
+var
+  NewValue: TTOMLFloat;
 begin
-  Self.Add(TTOMLFloat.Create(Value));
   Result := Self;
+  try
+    NewValue := TTOMLFloat.Create(Value);
+    try
+      Self.Add(NewValue);
+    except
+      NewValue.Free;
+      Result := nil;
+    end;
+  except
+    Result := nil;
+  end;
 end;
 
 function TTOMLArrayHelper.AddBool(const Value: Boolean): TTOMLArray;
+var
+  NewValue: TTOMLBoolean;
 begin
-  Self.Add(TTOMLBoolean.Create(Value));
   Result := Self;
+  try
+    NewValue := TTOMLBoolean.Create(Value);
+    try
+      Self.Add(NewValue);
+    except
+      NewValue.Free;
+      Result := nil;
+    end;
+  except
+    Result := nil;
+  end;
 end;
 
 function TTOMLArrayHelper.AddDateTime(const Value: TDateTime): TTOMLArray;
+var
+  NewValue: TTOMLDateTime;
 begin
-  Self.Add(TTOMLDateTime.Create(Value));
   Result := Self;
+  try
+    NewValue := TTOMLDateTime.Create(Value);
+    try
+      Self.Add(NewValue);
+    except
+      NewValue.Free;
+      Result := nil;
+    end;
+  except
+    Result := nil;
+  end;
 end;
 
 function TTOMLArrayHelper.AddTable(Value: TTOMLTable): TTOMLArray;
 begin
-  Self.Add(Value);
   Result := Self;
+  if not Assigned(Value) then
+    Exit;
+
+  try
+    Self.Add(Value);
+  except
+    Result := nil;
+  end;
 end;
 
 function TTOMLArrayHelper.AddArray(Value: TTOMLArray): TTOMLArray;
 begin
-  Self.Add(Value);
   Result := Self;
+  if not Assigned(Value) then
+    Exit;
+
+  try
+    Self.Add(Value);
+  except
+    Result := nil;
+  end;
 end;
 
 { ===== TTOMLArrayHelper - Serialization ===== }
 
 function TTOMLArrayHelper.ToString: string;
 begin
-  Result := TOML.Serializer.SerializeTOML(Self);
+  try
+    Result := TOML.Serializer.SerializeTOML(Self);
+  except
+    Result := '';
+  end;
 end;
 
-{ ===== TTOMLArrayHelper - Utility Methods ===== }
+{ ===== TTOMLArrayHelper - Safe Utility Methods ===== }
 
-procedure TTOMLArrayHelper.Clear;
+procedure TTOMLArrayHelper.Clear(FreeItems: Boolean);
 var
   Item: TTOMLValue;
 begin
-  for Item in Self.Items do
-    Item.Free;
-  Self.Items.Clear;
+  try
+    if FreeItems then
+    begin
+      for Item in Self.Items do
+        if Assigned(Item) then
+          Item.Free;
+    end;
+    Self.Items.Clear;
+  except
+    // Silently fail
+  end;
 end;
 
-function TTOMLArrayHelper.RemoveAt(Index: Integer): Boolean;
+function TTOMLArrayHelper.RemoveAt(Index: Integer; FreeItem: Boolean): Boolean;
 var
   Item: TTOMLValue;
 begin
-  Result := (Index >= 0) and (Index < Self.Count);
-  if Result then
-  begin
-    Item := Self.Items[Index];
-    Item.Free;
-    Self.Items.Delete(Index);
+  Result := False;
+
+  try
+    Result := (Index >= 0) and (Index < Self.Count);
+    if Result then
+    begin
+      Item := Self.Items[Index];
+      if FreeItem and Assigned(Item) then
+        Item.Free;
+      Self.Items.Delete(Index);
+    end;
+  except
+    Result := False;
   end;
 end;
 
