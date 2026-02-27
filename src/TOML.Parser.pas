@@ -1,6 +1,5 @@
 { TOML Parser unit that handles parsing of TOML format data.
   This unit implements a lexer and parser for the TOML format specification.
-
   The parser follows the TOML v1.0.0 specification and supports all TOML data types:
   - Basic key/value pairs with string, integer, float, boolean, and datetime values
   - Tables and inline tables for structured data
@@ -8,7 +7,6 @@
   - Basic strings and literal strings with proper escaping
   - Numbers in decimal, hexadecimal, octal, and binary formats
   - Dates and times in RFC 3339 format
-
   The parsing process is done in two stages:
   1. Lexical analysis (TTOMLLexer) - converts input text into tokens
   2. Syntactic analysis (TTOMLParser) - converts tokens into TOML data structures
@@ -376,44 +374,45 @@ end;
 
 function TTOMLLexer.ScanString: TToken;
 var
-  IsMultiline: Boolean;
-  IsLiteral: Boolean;
   QuoteChar: Char;
+  IsLiteral: Boolean;
+  IsMultiline: Boolean;
   StartColumn: Integer;
   TempValue: string;
 begin
-  IsMultiline := False;
-//  IsLiteral := False;
   StartColumn := FColumn;
   QuoteChar := Peek;
-  IsLiteral := QuoteChar = '''';
+  IsLiteral := (QuoteChar = '''');
+  IsMultiline := False;
+
   Advance; // Skip opening quote
 
-  // Check for multiline string
+  // Check for multiline string (three quotes)
   if (Peek = QuoteChar) and (PeekNext = QuoteChar) then
   begin
     IsMultiline := True;
     Advance; // Skip second quote
     Advance; // Skip third quote
-    if not IsLiteral then
-      // Skip first newline in multiline basic strings
-      if (Peek = #10) or ((Peek = #13) and (PeekNext = #10)) then
-      begin
-        if Peek = #13 then
-          Advance;
-        if Peek = #10 then
-          Advance;
-      end;
+
+    // Skip first newline for BOTH basic and literal strings
+    if (Peek = #10) or ((Peek = #13) and (PeekNext = #10)) then
+    begin
+      if Peek = #13 then
+        Advance;
+      if Peek = #10 then
+        Advance;
+    end;
   end;
 
   TempValue := '';
   try
     while not IsAtEnd do
     begin
+      // Check for closing quotes
       if IsMultiline then
       begin
-        if (Peek = QuoteChar) and (PeekNext = QuoteChar) and (FPosition + 2 <= Length(FInput)) and (FInput[FPosition
-          + 2] = QuoteChar) then
+        if (Peek = QuoteChar) and (PeekNext = QuoteChar) and
+           (FPosition + 2 <= Length(FInput)) and (FInput[FPosition + 2] = QuoteChar) then
         begin
           Advance; // Skip first quote
           Advance; // Skip second quote
@@ -427,30 +426,116 @@ begin
         Break;
       end;
 
+      // Handle escape sequences (only in basic strings)
       if (not IsLiteral) and (Peek = '\') then
       begin
         Advance; // Skip backslash
+
+        // Check for line-ending backslash in multiline strings
+        if IsMultiline and ((Peek = #10) or (Peek = #13)) then
+        begin
+          // Skip newline
+          if Peek = #13 then
+          begin
+            Advance;
+            if Peek = #10 then
+              Advance;
+          end
+          else if Peek = #10 then
+            Advance;
+
+          // Skip whitespace on next line
+          while (Peek = ' ') or (Peek = #9) do
+            Advance;
+
+          Continue;
+        end;
+
+        // Regular escape sequences
         case Peek of
-          'n':
-            TempValue := TempValue + #10;
-          't':
-            TempValue := TempValue + #9;
-          'r':
-            TempValue := TempValue + #13;
-          '\':
-            TempValue := TempValue + '\';
-          '"':
-            TempValue := TempValue + '"';
-          '''':
-            TempValue := TempValue + '''';
+          'b': TempValue := TempValue + #8;   // Backspace
+          'f': TempValue := TempValue + #12;  // Form feed
+          'n': TempValue := TempValue + #10;  // Line feed
+          'r': TempValue := TempValue + #13;  // Carriage return
+          't': TempValue := TempValue + #9;   // Tab
+          '\': TempValue := TempValue + '\';  // Backslash
+          '"': TempValue := TempValue + '"';  // Quote
+          '''': TempValue := TempValue + ''''; // Single quote
           'u', 'U':
             begin
-            // Handle Unicode escapes
-            // TODO: Implement Unicode escape sequences
-              raise ETOMLParserException.Create('Unicode escapes not yet implemented');
+              // Unicode escape implementation (see FIX 1 above)
+              var UnicodeChar: Char;
+              var HexDigits: Integer;
+              var CodePoint: Cardinal;
+              var HexStr: string;
+              var i: Integer;
+
+              UnicodeChar := Peek;
+              Advance;
+
+              if UnicodeChar = 'u' then
+                HexDigits := 4
+              else
+                HexDigits := 8;
+
+              HexStr := '';
+              for i := 1 to HexDigits do
+              begin
+                if not CharInSet(Peek, ['0'..'9', 'A'..'F', 'a'..'f']) then
+                  raise ETOMLParserException.CreateFmt(
+                    'Invalid Unicode escape at line %d column %d',
+                    [FLine, FColumn]);
+                HexStr := HexStr + Advance;
+              end;
+
+              CodePoint := StrToInt('$' + HexStr);
+
+              if (CodePoint > $10FFFF) or
+                 ((CodePoint >= $D800) and (CodePoint <= $DFFF)) then
+                raise ETOMLParserException.CreateFmt(
+                  'Invalid Unicode code point at line %d column %d',
+                  [FLine, FColumn]);
+
+              {$IF CompilerVersion >= 20.0}
+                if CodePoint <= $FFFF then
+                  TempValue := TempValue + WideChar(CodePoint)
+                else
+                begin
+                  CodePoint := CodePoint - $10000;
+                  TempValue := TempValue + WideChar($D800 or (CodePoint shr 10));
+                  TempValue := TempValue + WideChar($DC00 or (CodePoint and $3FF));
+                end;
+              {$ELSE}
+                // UTF-8 encoding for older Delphi
+                if CodePoint <= $7F then
+                  TempValue := TempValue + Chr(CodePoint)
+                else if CodePoint <= $7FF then
+                begin
+                  TempValue := TempValue + Chr($C0 or (CodePoint shr 6));
+                  TempValue := TempValue + Chr($80 or (CodePoint and $3F));
+                end
+                else if CodePoint <= $FFFF then
+                begin
+                  TempValue := TempValue + Chr($E0 or (CodePoint shr 12));
+                  TempValue := TempValue + Chr($80 or ((CodePoint shr 6) and $3F));
+                  TempValue := TempValue + Chr($80 or (CodePoint and $3F));
+                end
+                else
+                begin
+                  TempValue := TempValue + Chr($F0 or (CodePoint shr 18));
+                  TempValue := TempValue + Chr($80 or ((CodePoint shr 12) and $3F));
+                  TempValue := TempValue + Chr($80 or ((CodePoint shr 6) and $3F));
+                  TempValue := TempValue + Chr($80 or (CodePoint and $3F));
+                end;
+              {$IFEND}
+
+              // Don't call Advance again - we already consumed all characters
+              Continue;
             end;
         else
-          raise ETOMLParserException.Create('Invalid escape sequence');
+          raise ETOMLParserException.CreateFmt(
+            'Invalid escape sequence: \%s at line %d column %d',
+            [Peek, FLine, FColumn]);
         end;
         Advance;
       end
@@ -499,6 +584,41 @@ var
     Result := CharInSet(C, ['0'..'7']);
   end;
 
+  function ValidateUnderscores(const NumStr: string): Boolean;
+  var
+    i: Integer;
+    PrevWasUnderscore: Boolean;
+  begin
+    Result := True;
+
+  // Check for leading or trailing underscore
+    if (Length(NumStr) > 0) then
+    begin
+      if (NumStr[1] = '_') or (NumStr[Length(NumStr)] = '_') then
+      begin
+        Result := False;
+        Exit;
+      end;
+    end;
+
+  // Check for double underscores
+    PrevWasUnderscore := False;
+    for i := 1 to Length(NumStr) do
+    begin
+      if NumStr[i] = '_' then
+      begin
+        if PrevWasUnderscore then
+        begin
+          Result := False;
+          Exit;
+        end;
+        PrevWasUnderscore := True;
+      end
+      else
+        PrevWasUnderscore := False;
+    end;
+  end;
+
 begin
   IsFloat := False;
   StartColumn := FColumn;
@@ -520,6 +640,10 @@ begin
       if Peek = 'f' then
       begin
         TempValue := TempValue + Advance;  // 'f'
+        if not ValidateUnderscores(TempValue) then
+        raise ETOMLParserException.CreateFmt(
+          'Invalid underscore placement in number: %s at line %d column %d',
+          [TempValue, FLine, StartColumn]);
         Result.TokenType := ttFloat;
         Result.Value := TempValue;
         Result.Line := FLine;
@@ -538,6 +662,10 @@ begin
       if Peek = 'n' then
       begin
         TempValue := TempValue + Advance;  // 'n'
+        if not ValidateUnderscores(TempValue) then
+        raise ETOMLParserException.CreateFmt(
+          'Invalid underscore placement in number: %s at line %d column %d',
+          [TempValue, FLine, StartColumn]);
         Result.TokenType := ttFloat;
         Result.Value := TempValue;
         Result.Line := FLine;
@@ -579,7 +707,10 @@ begin
             else
               Advance;
       end;
-
+      if not ValidateUnderscores(TempValue) then
+      raise ETOMLParserException.CreateFmt(
+        'Invalid underscore placement in number: %s at line %d column %d',
+        [TempValue, FLine, StartColumn]);
       Result.TokenType := ttInteger;
       Result.Value := TempValue;
       Result.Line := FLine;
@@ -630,7 +761,6 @@ begin
     Result.TokenType := ttFloat
   else
     Result.TokenType := ttInteger;
-
   Result.Value := TempValue;
   Result.Line := FLine;
   Result.Column := StartColumn;
@@ -1483,4 +1613,3 @@ begin
 end;
 
 end.
-
