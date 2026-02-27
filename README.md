@@ -37,41 +37,38 @@
 ```
 - 写入
 ```
-      // Set类
-      Config.SetStr('title', 'My App');
-      Config.SetInt('width', 1920);
-      Config.SetFloat('scale', 1.5);
-      Config.SetBool('debug', False);
-      Config.SetDateTime('created', Now);
-      Config.SetArray('tags', Tags);
-      Config.SetTable('server', Server);
+      // Set类，默认覆盖原值
+      Config.SetStr(key, value, [Overwrite]);
+      Config.SetInt(key, value, [Overwrite]);
+      Config.SetFloat(key, value, [Overwrite]);
+      Config.SetBool(key, value, [Overwrite]);
+      Config.SetDateTime(key, value, [Overwrite]);
+      Config.SetArray(key, value, [Overwrite]);
+      Config.SetTable(key, value, [Overwrite]);
 
-      // Put方法，支持重载，自动识别类型
+      // Put方法，支持重载，自动识别类型，默认覆盖原值
       Config := NewTable
-        .Put('width', 1920)      // 自动识别为 Integer
-        .Put('height', 1080)
-        .Put('title', 'My App')  // 自动识别为 String
-        .Put('debug', False);    // 自动识别为 Boolean
+        .Put(key1, value1, [Overwrite])
+        .Put(key2, value2, [Overwrite])
+        .Put(key3, value3, [Overwrite]);
 
       // 数组的 Add 方法
       Tags := NewArray
-        .AddStr('pascal')
-        .AddStr('delphi')
-        .AddStr('toml');
+        .AddStr('value1')
+        .AddStr('value2')
+        .AddStr('value3');
 
       Ports := NewArray
         .AddInt(8080)
         .AddInt(8081)
         .AddInt(8082);
+      // 另外也支持：AddFloat、AddBool、AddDateTime、AddTable
+      // 按索引删除数组中数据
+      Array.RemoveAt(idx);
+      // 清空数组
+      Array.Clear;
 
-      // 更新或创建
-      Config.AddOrSetInt('port', 8080);
-      Config.AddOrSetFloat('version', 1.3);
-      Config.AddOrSetStr('title', 'Updated Title');
-      Config.AddOrSetBool('enabled', true);
-      Config.AddOrSetDateTime('date',now);
-      Config.AddOrSetArray('tags',tags);
-      Config.AddOrSetTable('server', Server);
+      // 更新或创建函数（功能重复，已删除）
 
       // 创建表或数组
       Config := NewTable;
@@ -86,9 +83,6 @@
       Config.HasKey(Key);              // 检查键是否存在
       Config.GetKeys(List, Recursive); // 获取所有键名
       Config.REmove('key');            // 删除键
-      Array.RemoveAt(idx);             // 按索引删除数组中数据
-      Array.Clear;                     // 清空数组
-      Array.AddArray(NestedArray);     // 嵌套数组
 ```  
 - 示例：
 ```
@@ -131,15 +125,16 @@
           .Put('pool_size', 10)
       );
   
-    // 写入
+    // 写入（默认覆盖原值）
     Config.SetStr('title', 'My App');
-    Config.SetInt('width', 1920);
+    Config.SetInt('width', 1920, True);
     Config.SetBool('debug', False);
+    Config.SetFloat('version', 1.1, False);
 
-    // 自动识别类型写入
+    // 自动识别类型写入（默认覆盖原值）
     Config.Put('width', 1920)
           .Put('height', 1080)
-          .Put('title', 'My App');
+          .Put('title', 'My App', False);
     // 保存文件
     Config.SaveToFile('config.toml');
 
