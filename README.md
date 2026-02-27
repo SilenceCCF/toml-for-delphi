@@ -1,12 +1,12 @@
 # TOML Parser for Delphi
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Delphi](https://img.shields.io/badge/Delphi2009%20and%20high-green.svg)](https://www.embarcadero.com/products/delphi/)
+[![Delphi](https://img.shields.io/badge/Delphi2005%20and%20high-green.svg)](https://www.embarcadero.com/products/delphi/)
 [![TOML](https://img.shields.io/badge/TOML-1.0.0-green.svg)](https://toml.io/)
 
-一个解析 [TOML](https://toml.io/) 格式的单元，改写自 [ikelaiah 的 TOML Parser for Free Pascal](https://github.com/ikelaiah/toml-fp) v1.0.3 版本，适用于 Delphi 2009 及更高版本，并做了以下修改：
+一个解析 [TOML](https://toml.io/) 格式的单元，改写自 [ikelaiah 的 TOML Parser for Free Pascal](https://github.com/ikelaiah/toml-fp) v1.0.3 版本，适用于 Delphi 2005 及更高版本，并做了以下修改：
 1. TOML.Parser.pas 单元的 ParseTOMLFile 函数增加自动识别文件编码格式功能，增强兼容性。
-2. 如要支持更低版本的 delphi，只须将 TOML.Parser.pas 和 TOML.Serializer.pas 单元中与 CharInSet 相关的语句替换回注释掉的 in 语句即可。
+2. 如要支持更低版本的 delphi，只须将源码中的所有 for-in 循环替换为 for-to 循环即可。
 3. 增加 TOML.Helper.pas 单元，简化读写操作，该单元稍做修改也可适用于 Free Pascal。
 4. examples 等尚未增加，待续。
 
