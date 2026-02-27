@@ -77,12 +77,18 @@
       Config := Table;
       Tags := Arr;
 
-      // 其它工具方法
-      Config.ToString;                 // 转换为字符串
-      Config.Count;                    // 获取键数量
-      Config.HasKey(Key);              // 检查键是否存在
-      Config.GetKeys(List, Recursive); // 获取所有键名
-      Config.REmove('key');            // 删除键
+      // 其它工具方法    
+      Config.SaveToFile('config.toml');  // 保存到文件
+      Config.LoadFromString(ATOML,True); // 由字符串载入数据
+      Config.ToString;                   // 转换为字符串
+      Config.Count;                      // 获取键数量
+      Config.HasKey(Key);                // 检查键是否存在
+      Config.GetKeys(List, Recursive);   // 获取所有键名
+      Config.REmove('key');              // 删除键
+
+      ParseTOML(ATOML);                  // 由字符串载入数据
+      LoadTOML(FileName);                // 由文件载入数据
+
 ```  
 - 示例：
 ```
