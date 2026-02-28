@@ -80,11 +80,13 @@ type
     { Writes a TOML datetime value
       @param ADateTime The datetime to write
       Formats datetime according to RFC 3339 }
-    procedure WriteDateTime(const ADateTime: TDateTime);
+    procedure WriteDateTime(const ADateTimeValue: TTOMLValue);
+//    procedure WriteDateTime(const ADateTime: TDateTime);
 
     { Checks if a key needs to be quoted
       @param AKey The key to check
       @returns True if key needs quoting, False otherwise }
+    function SplitDottedKey(const CompositeKey: string): TArray<string>;
     function NeedsQuoting(const AKey: string): Boolean;
   public
     { Creates a new TOML serializer instance }
@@ -196,6 +198,64 @@ begin
   FStringBuilder.AppendLine;
 end;
 
+function TTOMLSerializer.SplitDottedKey(const CompositeKey: string): TArray<string>;
+var
+  Parts: TList<string>;
+  CurrentPart: string;
+  i: Integer;
+  InQuotes: Boolean;
+  Ch: Char;
+begin
+  Parts := TList<string>.Create;
+  try
+    CurrentPart := '';
+    InQuotes := False;
+
+    i := 1;
+    while i <= Length(CompositeKey) do
+    begin
+      Ch := CompositeKey[i];
+
+      if Ch = '"' then
+      begin
+        // 切换引号状态
+        // 关键：不添加引号本身！
+        InQuotes := not InQuotes;
+        Inc(i);
+        Continue;
+      end;
+
+      if (Ch = '.') and (not InQuotes) then
+      begin
+        // 只有引号外的点才是分隔符
+        if CurrentPart <> '' then
+        begin
+          Parts.Add(CurrentPart);
+          CurrentPart := '';
+        end;
+      end
+      else
+      begin
+        // 普通字符或引号内的点
+        CurrentPart := CurrentPart + Ch;
+      end;
+
+      Inc(i);
+    end;
+
+    // 添加最后一部分
+    if CurrentPart <> '' then
+      Parts.Add(CurrentPart);
+
+    // 转换为数组
+    SetLength(Result, Parts.Count);
+    for i := 0 to Parts.Count - 1 do
+      Result[i] := Parts[i];
+  finally
+    Parts.Free;
+  end;
+end;
+
 function TTOMLSerializer.NeedsQuoting(const AKey: string): Boolean;
 var
   i: Integer;
@@ -219,12 +279,46 @@ begin
   Result := False;
 end;
 
+//procedure TTOMLSerializer.WriteKey(const AKey: string);
+//begin
+//  if NeedsQuoting(AKey) then
+//    WriteString(AKey)
+//  else
+//    FStringBuilder.Append(AKey);
+//end;
+
 procedure TTOMLSerializer.WriteKey(const AKey: string);
+var
+  KeyParts: TArray<string>;
+  i: Integer;
+  Part: string;
 begin
-  if NeedsQuoting(AKey) then
-    WriteString(AKey)
+  // Check if this is a dotted key
+  if Pos('.', AKey) > 0 then
+  begin
+    // Split and write each part with appropriate quoting
+    KeyParts := SplitDottedKey(AKey);
+
+    for i := 0 to High(KeyParts) do
+    begin
+      if i > 0 then
+        FStringBuilder.Append('.');
+
+      Part := KeyParts[i];
+      if NeedsQuoting(Part) then
+        WriteString(Part)
+      else
+        FStringBuilder.Append(Part);
+    end;
+  end
   else
-    FStringBuilder.Append(AKey);
+  begin
+    // Simple key
+    if NeedsQuoting(AKey) then
+      WriteString(AKey)
+    else
+      FStringBuilder.Append(AKey);
+  end;
 end;
 
 procedure TTOMLSerializer.WriteString(const AValue: string);
@@ -260,11 +354,22 @@ begin
   FStringBuilder.Append('"');
 end;
 
-procedure TTOMLSerializer.WriteDateTime(const ADateTime: TDateTime);
+procedure TTOMLSerializer.WriteDateTime(const ADateTimeValue: TTOMLValue);
+var
+  DTObj: TTOMLDateTime;
 begin
-  // Format as RFC 3339 UTC datetime
-  FStringBuilder.Append(FormatDateTime('yyyy-mm-dd"T"hh:nn:ss.zzz"Z"', ADateTime));
+  DTObj := ADateTimeValue as TTOMLDateTime;
+  if DTObj.RawString <> '' then
+    FStringBuilder.Append(DTObj.RawString)
+  else
+    FStringBuilder.Append(FormatDateTime('yyyy-mm-dd"T"hh:nn:ss.zzz"Z"', DTObj.Value));
 end;
+
+//procedure TTOMLSerializer.WriteDateTime(const ADateTime: TDateTime);
+//begin
+//  // Format as RFC 3339 UTC datetime
+//  FStringBuilder.Append(FormatDateTime('yyyy-mm-dd"T"hh:nn:ss.zzz"Z"', ADateTime));
+//end;
 
 procedure TTOMLSerializer.WriteArray(const AArray: TTOMLArray);
 var
@@ -323,7 +428,8 @@ begin
         FStringBuilder.Append('false');
 
     tvtDateTime:
-      WriteDateTime(AValue.AsDateTime);
+      WriteDateTime(AValue);
+//      WriteDateTime(AValue.AsDateTime);
 
     tvtArray:
       WriteArray(AValue.AsArray);
@@ -475,4 +581,3 @@ begin
 end;
 
 end.
-
