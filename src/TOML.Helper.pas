@@ -16,24 +16,33 @@ type
       @param DefaultValue Default value if key not found
       @returns String value or default }
     function GetStr(const Key: string; const DefaultValue: string = ''): string;
+    function TryGetStr(const Key: string; out Value: string): Boolean;
 
     { Get integer value with default support }
     function GetInt(const Key: string; const DefaultValue: Int64 = 0): Int64;
+    function TryGetInt(const Key: string; out Value: Integer): Boolean;
 
     { Get float value with default support }
     function GetFloat(const Key: string; const DefaultValue: Double = 0.0): Double;
+    function TryGetFloat(const Key: string; out Value: Double): Boolean;
 
     { Get boolean value with default support }
     function GetBool(const Key: string; const DefaultValue: Boolean = False): Boolean;
+    function TryGetBool(const Key: string; out Value: Boolean): Boolean;
 
     { Get datetime value with default support }
     function GetDateTime(const Key: string; const DefaultValue: TDateTime = 0): TDateTime;
-
+    function TryGetDateTime(const Key: string; out Value: TDateTime): Boolean;
+    function GetDateTimeValue(const Key: string; const DefaultValue: String = ''): String;
+    function TryGetDateTimeValue(const Key: string; out Value: String): Boolean;
+    
     { Get array reference (returns nil if not found) }
     function GetArray(const Key: string): TTOMLArray;
+    function TryGetArray(const Key: string; out Value: TTOMLArray): Boolean;
 
     { Get table reference (returns nil if not found) }
     function GetTable(const Key: string): TTOMLTable;
+    function TryGetTable(const Key: string; out Value: TTOMLTable): Boolean;
 
     { Check if key exists }
     function HasKey(const Key: string): Boolean;
@@ -130,7 +139,7 @@ type
 
     { Serialize this table to TOML string
       @returns TOML formatted string, empty string on error }
-    function toString: string; reintroduce;
+    function ToString: string; reintroduce;
 
     { ===== SAFE UTILITY METHODS ===== }
 
@@ -189,7 +198,7 @@ type
     { Add table value - ownership transferred only on success
   		@param Value Table object
   		@returns Self for chaining, nil on error
-  		@note If returns nil, caller retains ownership and must free Value }    
+  		@note If returns nil, caller retains ownership and must free Value }
     function AddTable(Value: TTOMLTable): TTOMLArray;
 
     { Add array value - takes ownership }
@@ -198,7 +207,7 @@ type
     { ===== SERIALIZATION ===== }
 
     { Serialize this array to TOML string }
-    function toString: string; reintroduce;
+    function ToString: string; reintroduce;
 
     { ===== SAFE UTILITY METHODS ===== }
 
@@ -416,19 +425,46 @@ begin
   end;
 end;
 
+function TTOMLTableHelper.TryGetStr(const Key: string; out Value: string): Boolean;
+var
+  TOMLVal: TTOMLValue;
+begin
+  try
+    TOMLVal := GetValueFromPath(Self, Key);
+    Result := Assigned(TOMLVal) and (TOMLVal is TTOMLString);
+    if Result then
+      Value := TOMLVal.AsString;
+  except
+    Result := False;
+  end;
+end;
+
 function TTOMLTableHelper.GetInt(const Key: string; const DefaultValue: Int64): Int64;
 var
   Value: TTOMLValue;
 begin
   try
     Value := GetValueFromPath(Self, Key);
-
     if Assigned(Value) and (Value is TTOMLInteger) then
       Result := Value.AsInteger
     else
       Result := DefaultValue;
   except
     Result := DefaultValue;
+  end;
+end;
+
+function TTOMLTableHelper.TryGetInt(const Key: string; out Value: Integer): Boolean;
+var
+  TOMLVal: TTOMLValue;
+begin
+  try
+    TOMLVal := GetValueFromPath(Self, Key);
+    Result := Assigned(TOMLVal) and (TOMLVal is TTOMLInteger);
+    if Result then
+      Value := TOMLVal.AsInteger;
+  except
+    Result := False;
   end;
 end;
 
@@ -455,6 +491,20 @@ begin
   end;
 end;
 
+function TTOMLTableHelper.TryGetFloat(const Key: string; out Value: Double): Boolean;
+var
+  TOMLVal: TTOMLValue;
+begin
+  try
+    TOMLVal := GetValueFromPath(Self, Key);
+    Result := Assigned(TOMLVal) and (TOMLVal is TTOMLFloat);
+    if Result then
+      Value := TOMLVal.AsFloat;
+  except
+    Result := False;
+  end;
+end;
+
 function TTOMLTableHelper.GetBool(const Key: string; const DefaultValue: Boolean): Boolean;
 var
   Value: TTOMLValue;
@@ -468,6 +518,20 @@ begin
       Result := DefaultValue;
   except
     Result := DefaultValue;
+  end;
+end;
+
+function TTOMLTableHelper.TryGetBool(const Key: string; out Value: Boolean): Boolean;
+var
+  TOMLVal: TTOMLValue;
+begin
+  try
+    TOMLVal := GetValueFromPath(Self, Key);
+    Result := Assigned(TOMLVal) and (TOMLVal is TTOMLBoolean);
+    if Result then
+      Value := TOMLVal.AsBoolean;
+  except
+    Result := False;
   end;
 end;
 
@@ -487,6 +551,51 @@ begin
   end;
 end;
 
+function TTOMLTableHelper.TryGetDateTime(const Key: string; out Value: TDateTime): Boolean;
+var
+  TOMLVal: TTOMLValue;
+begin
+  try
+    TOMLVal := GetValueFromPath(Self, Key);
+    Result := Assigned(TOMLVal) and (TOMLVal is TTOMLDateTime);
+    if Result then
+      Value := TOMLVal.AsDateTime;
+  except
+    Result := False;
+  end;
+end;
+
+
+function TTOMLTableHelper.GetDateTimeValue(const Key: string; const DefaultValue: String = ''): String;
+var
+  Value: TTOMLValue;
+begin
+  try
+    Value := GetValueFromPath(Self, Key);
+
+    if Assigned(Value) and (Value is TTOMLDateTime) then
+      Result := TTOMLDateTime(Value).RawString
+    else
+      Result := DefaultValue;
+  except
+    Result := DefaultValue;
+  end;
+end;
+
+function TTOMLTableHelper.TryGetDateTimeValue(const Key: string; out Value: String): Boolean;
+var
+  TOMLVal: TTOMLValue;
+begin
+  try
+    TOMLVal := GetValueFromPath(Self, Key);
+    Result := Assigned(TOMLVal) and (TOMLVal is TTOMLDateTime);
+    if Result then
+      Value := TTOMLDateTime(Value).RawString;
+  except
+    Result := False;
+  end;
+end;
+
 function TTOMLTableHelper.GetArray(const Key: string): TTOMLArray;
 var
   Value: TTOMLValue;
@@ -495,11 +604,25 @@ begin
     Value := GetValueFromPath(Self, Key);
 
     if Assigned(Value) and (Value is TTOMLArray) then
-      Result := TTOMLArray(Value)
+      Result := Value.AsArray
     else
       Result := nil;
   except
     Result := nil;
+  end;
+end;
+
+function TTOMLTableHelper.TryGetArray(const Key: string; out Value: TTOMLArray): Boolean;
+var
+  TOMLVal: TTOMLValue;
+begin
+  try
+    TOMLVal := GetValueFromPath(Self, Key);
+    Result := Assigned(TOMLVal) and (TOMLVal is TTOMLArray);
+    if Result then
+      Value := TOMLVal.AsArray;
+  except
+    Result := False;
   end;
 end;
 
@@ -510,6 +633,12 @@ begin
   except
     Result := nil;
   end;
+end;
+
+function TTOMLTableHelper.TryGetTable(const Key: string; out Value: TTOMLTable): Boolean;
+begin
+  Value := NavigateToTable(Self, Key);
+  Result := Assigned(Value);
 end;
 
 function TTOMLTableHelper.HasKey(const Key: string): Boolean;
@@ -892,7 +1021,7 @@ end;
 
 { ===== TTOMLTableHelper - Serialization ===== }
 
-function TTOMLTableHelper.toString: string;
+function TTOMLTableHelper.ToString: string;
 begin
   try
     Result := TOML.Serializer.SerializeTOML(Self);
@@ -1211,7 +1340,7 @@ end;
 
 { ===== TTOMLArrayHelper - Serialization ===== }
 
-function TTOMLArrayHelper.toString: string;
+function TTOMLArrayHelper.ToString: string;
 begin
   try
     Result := TOML.Serializer.SerializeTOML(Self);
@@ -1260,4 +1389,3 @@ begin
 end;
 
 end.
-
