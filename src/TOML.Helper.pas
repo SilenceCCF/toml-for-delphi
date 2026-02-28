@@ -186,7 +186,10 @@ type
     { Add datetime value }
     function AddDateTime(const Value: TDateTime): TTOMLArray;
 
-    { Add table value - takes ownership }
+    { Add table value - ownership transferred only on success
+  		@param Value Table object
+  		@returns Self for chaining, nil on error
+  		@note If returns nil, caller retains ownership and must free Value }    
     function AddTable(Value: TTOMLTable): TTOMLArray;
 
     { Add array value - takes ownership }
@@ -714,6 +717,11 @@ begin
   end;
 end;
 
+{ Set array value with overwrite control
+  @param Value Array object
+  @returns True if value was set, False if key exists and Overwrite=False
+  @note Ownership transfers only on success (Result=True)
+  @note If returns False, caller retains ownership and must manage Value }
 function TTOMLTableHelper.SetArray(const Key: string; Value: TTOMLArray; Overwrite: Boolean): Boolean;
 var
   OldValue: TTOMLValue;
