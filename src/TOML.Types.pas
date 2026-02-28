@@ -5,12 +5,10 @@
   - Complex types (array, table)
   - Type conversion and validation
   - Memory management for TOML data structures
-  
   The type system follows the TOML v1.0.0 specification and ensures type safety through
   runtime checks and explicit type conversions.
 }
 unit TOML.Types;
-
 //{$mode objfpc}{$H+}{$J-}
 //{$modeswitch typehelpers}
 //{$modeswitch advancedrecords}
@@ -23,8 +21,7 @@ uses
 type
   { TOML value types - represents all possible TOML data types
     These types correspond directly to the TOML specification types }
-  TTOMLValueType = (
-    tvtString,      // String value type (basic and literal strings)
+  TTOMLValueType = (tvtString,      // String value type (basic and literal strings)
     tvtInteger,     // Integer value type (decimal, hex, octal, binary)
     tvtFloat,       // Float/decimal value type (including exponential notation)
     tvtBoolean,     // Boolean value type (true/false)
@@ -33,31 +30,26 @@ type
     tvtTable,       // Table value type (collection of key/value pairs)
     tvtInlineTable  // Inline table value type (compact table representation)
   );
-
   { Forward declarations for interdependent types }
   TTOMLValue = class;
-  TTOMLArray = class;
-  TTOMLTable = class;
 
+  TTOMLArray = class;
+
+  TTOMLTable = class;
   { Exception types for TOML parsing and handling }
-  
+
   { Base exception type for all TOML-related errors }
   ETOMLException = class(Exception);
-  
   { Exception type for TOML parsing errors }
   ETOMLParserException = class(ETOMLException);
-  
   { Exception type for TOML serialization errors }
   ETOMLSerializerException = class(ETOMLException);
-
   { Generic dictionary type for TOML tables
     Maps string keys to TOML values with case-sensitive comparison }
   TTOMLTableDict = TDictionary<string, TTOMLValue>;
-  
   { Generic list type for TOML arrays
     Stores ordered list of TOML values }
   TTOMLValueList = TList<TTOMLValue>;
-
   { Base TOML value class - abstract base class for all TOML value types
     Provides common functionality and type conversion methods }
   TTOMLValue = class
@@ -78,7 +70,7 @@ type
       @param AType The type of TOML value to create }
     constructor Create(AType: TTOMLValueType);
     destructor Destroy; override;
-    
+
     { Properties for accessing the value in different formats
       Each property will raise ETOMLException if conversion is not supported }
     property ValueType: TTOMLValueType read FValueType;
@@ -90,7 +82,6 @@ type
     property AsArray: TTOMLArray read GetAsArray;
     property AsTable: TTOMLTable read GetAsTable;
   end;
-
   { String value - represents a TOML string (basic or literal) }
   TTOMLString = class(TTOMLValue)
   private
@@ -103,7 +94,6 @@ type
     constructor Create(const AValue: string);
     property Value: string read FValue write FValue;
   end;
-
   { Integer value - represents a TOML integer (decimal, hex, octal, binary) }
   TTOMLInteger = class(TTOMLValue)
   private
@@ -117,7 +107,6 @@ type
     constructor Create(const AValue: Int64);
     property Value: Int64 read FValue write FValue;
   end;
-
   { Float value - represents a TOML float (including exponential notation) }
   TTOMLFloat = class(TTOMLValue)
   private
@@ -130,7 +119,6 @@ type
     constructor Create(const AValue: Double);
     property Value: Double read FValue write FValue;
   end;
-
   { Boolean value - represents a TOML boolean (true/false) }
   TTOMLBoolean = class(TTOMLValue)
   private
@@ -143,20 +131,19 @@ type
     constructor Create(const AValue: Boolean);
     property Value: Boolean read FValue write FValue;
   end;
-
   { DateTime value - represents a TOML datetime (RFC 3339 format) }
   TTOMLDateTime = class(TTOMLValue)
   private
-    FValue: TDateTime;  // The datetime value
+    FValue: TDateTime;
+    FRawString: string; // 新增：存储原始文本以保持精度
   protected
     function GetAsDateTime: TDateTime; override;
+    function GetAsString: string; override; // 重写，返回原始文本
   public
-    { Creates a new TOML datetime value
-      @param AValue The TDateTime value to store }
-    constructor Create(const AValue: TDateTime);
+    constructor Create(const ADateTime: TDateTime; const ARawString: string = '');
     property Value: TDateTime read FValue write FValue;
+    property RawString: string read FRawString write FRawString;
   end;
-
   { Array value - represents a TOML array (ordered list of values) }
   TTOMLArray = class(TTOMLValue)
   private
@@ -167,27 +154,26 @@ type
     { Creates a new empty TOML array }
     constructor Create;
     destructor Destroy; override;
-    
+
     { Adds a value to the array
       @param AValue The value to add
       @note Takes ownership of the value }
     procedure Add(AValue: TTOMLValue);
-    
+
     { Gets an item at the specified index
       @param Index The zero-based index
       @returns The TOML value at the index
       @raises EListError if index is out of bounds }
     function GetItem(Index: Integer): TTOMLValue;
-    
+
     { Gets the number of items in the array
       @returns The count of items }
     function GetCount: Integer;
-    
+
     { Properties for accessing array data }
     property Items: TTOMLValueList read FItems;
     property Count: Integer read GetCount;
   end;
-
   { Table value - represents a TOML table (collection of key/value pairs) }
   TTOMLTable = class(TTOMLValue)
   private
@@ -198,26 +184,25 @@ type
     { Creates a new empty TOML table }
     constructor Create;
     destructor Destroy; override;
-    
+
     { Adds a key-value pair to the table
       @param AKey The key for the value
       @param AValue The value to add
       @raises ETOMLParserException if the key already exists
       @note Takes ownership of the value }
     procedure Add(const AKey: string; AValue: TTOMLValue);
-    
+
     { Tries to get a value by key
       @param AKey The key to look up
       @param AValue The found value (if successful)
       @returns True if the key exists, False otherwise }
     function TryGetValue(const AKey: string; out AValue: TTOMLValue): Boolean;
-    
+
     { Property for accessing the underlying dictionary }
     property Items: TTOMLTableDict read FItems;
   end;
 
 implementation
-
 { TTOMLValue }
 
 constructor TTOMLValue.Create(AType: TTOMLValueType);
@@ -272,7 +257,6 @@ begin
   Result := nil;
   raise ETOMLException.Create('Cannot convert this TOML value to table');
 end;
-
 { TTOMLString }
 
 constructor TTOMLString.Create(const AValue: string);
@@ -285,7 +269,6 @@ function TTOMLString.GetAsString: string;
 begin
   Result := FValue;
 end;
-
 { TTOMLInteger }
 
 constructor TTOMLInteger.Create(const AValue: Int64);
@@ -303,7 +286,6 @@ function TTOMLInteger.GetAsFloat: Double;
 begin
   Result := FValue;
 end;
-
 { TTOMLFloat }
 
 constructor TTOMLFloat.Create(const AValue: Double);
@@ -316,7 +298,6 @@ function TTOMLFloat.GetAsFloat: Double;
 begin
   Result := FValue;
 end;
-
 { TTOMLBoolean }
 
 constructor TTOMLBoolean.Create(const AValue: Boolean);
@@ -329,20 +310,25 @@ function TTOMLBoolean.GetAsBoolean: Boolean;
 begin
   Result := FValue;
 end;
-
 { TTOMLDateTime }
 
-constructor TTOMLDateTime.Create(const AValue: TDateTime);
+constructor TTOMLDateTime.Create(const ADateTime: TDateTime; const ARawString: string);
 begin
   inherited Create(tvtDateTime);
-  FValue := AValue;
+  FValue := ADateTime;
+  FRawString := ARawString;
+end;
+
+function TTOMLDateTime.GetAsString: string;
+begin
+  if FRawString <> '' then Result := FRawString
+  else Result := FormatDateTime('yyyy-mm-dd"T"hh:nn:ss.zzz"Z"', FValue);
 end;
 
 function TTOMLDateTime.GetAsDateTime: TDateTime;
 begin
   Result := FValue;
 end;
-
 { TTOMLArray }
 
 constructor TTOMLArray.Create;
@@ -381,7 +367,6 @@ function TTOMLArray.GetAsArray: TTOMLArray;
 begin
   Result := Self;
 end;
-
 { TTOMLTable }
 
 constructor TTOMLTable.Create;
@@ -407,11 +392,11 @@ var
 begin
   if FItems = nil then
     FItems := TTOMLTableDict.Create;
-    
+
   // Check for duplicate keys
   if FItems.TryGetValue(AKey, ExistingValue) then
     raise ETOMLParserException.CreateFmt('Duplicate key "%s" found', [AKey]);
-    
+
   FItems.AddOrSetValue(AKey, AValue);
 end;
 
@@ -425,4 +410,4 @@ begin
   Result := Self;
 end;
 
-end. 
+end.
