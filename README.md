@@ -25,16 +25,25 @@
       Config.GetFloat(Key, Default);     // 浮点数
       Config.GetBool(Key, Default);      // 布尔值
       Config.GetDateTime(Key, Default);  // 日期时间
+      Config.GetDateTimeValue(Key, Default);  // 日期时间原始精度字符串
 
+      Config.TryGetStr(Key, Value);      // 字符串
+      Config.TryGetInt(Key, Value);      // 整数
+      Config.TryGetFloat(Key, Value);    // 浮点数
+      Config.TryGetBool(Key, Value);     // 布尔值
+      Config.TryetDateTime(Key, Value);  // 日期时间
+      Config.TryGetDateTimeValue(Key, Value);  // 日期时间原始精度字符串
       // 复杂类型
       Config.GetArray(Key);              // 数组（返回nil表示不存在）
+      Config.TryGetArray(Key, value);    // 数组
       Config.GetTable(Key);              // 表（返回nil表示不存在）
+      Config.TryGetTable(Key, value);    // 表
 
       // 数组方法
       Array.GetStr(Index, Default);
       Array.GetInt(Index, Default);
       Array.GetTable(Index);
-      Array.ForEachTable(Procedure);
+      Array.ForEachTable(Procedure);     // 遍历数组
 ```
 - 写入
 ```
@@ -102,6 +111,8 @@
     title := Config.GetStr('title');
     debug := Config.GetBool('debug',False);
     name := Config.GetStr('server.host', 'localhost');  // 支持点分隔路径
+    if Config.TryGetStr('name',value) then
+    showmessage(value);
 
     //创建
     Config := NewTable;
