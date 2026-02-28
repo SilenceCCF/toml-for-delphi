@@ -118,11 +118,19 @@ type
       @returns True if successful, False on error }
     function SaveToFile(const FileName: string; WriteBOM: Boolean = True): Boolean;
 
+
+    { Load TOML from string into this table
+      @param ATOML The TOML string to parse
+      @param ClearExisting If True, clears table before loading
+      @returns True if successful, False on error }
+    function LoadFromString(const ATOML: string; ClearExisting: Boolean = True): Boolean;
+
+
     { ===== SERIALIZATION ===== }
 
     { Serialize this table to TOML string
       @returns TOML formatted string, empty string on error }
-    function ToString: string; reintroduce;
+    function toString: string; reintroduce;
 
     { ===== SAFE UTILITY METHODS ===== }
 
@@ -143,7 +151,9 @@ type
       @param Key Key name
       @param Value Output parameter
       @returns True if key exists and value retrieved }
-    function TryGetValue(const Key: string; out Value: TTOMLValue): Boolean;
+
+    {Clone TOMLTable}
+    function Clone: TTOMLTable;
   end;
 
   { TOML Array helper class - Complete optimized API }
@@ -185,7 +195,7 @@ type
     { ===== SERIALIZATION ===== }
 
     { Serialize this array to TOML string }
-    function ToString: string; reintroduce;
+    function toString: string; reintroduce;
 
     { ===== SAFE UTILITY METHODS ===== }
 
@@ -218,12 +228,17 @@ function NewArray: TTOMLArray;
 function LoadTOML(const FileName: string): TTOMLTable;
 
 { Load TOML from string - returns nil on error }
-function ParseTOML(const Str: string): TTOMLTable;
+function ParseTOML(const ATOML: string): TTOMLTable;
+
+{ Try to Load TOML from string - returns True or False }
+function TryParseTOML(const ATOML: string; out Config: TTOMLTable): Boolean;
 
 { ===== HELPER FUNCTIONS (Internal) ===== }
 
 function SplitPath(const Path: string): TArray<string>;
+
 function NavigateToTable(Root: TTOMLTable; const Path: string): TTOMLTable;
+
 function GetValueFromPath(Root: TTOMLTable; const Path: string): TTOMLValue;
 
 implementation
@@ -252,14 +267,26 @@ begin
   end;
 end;
 
-function ParseTOML(const Str: string): TTOMLTable;
+function ParseTOML(const ATOML: string): TTOMLTable;
 begin
   try
-    Result := TOML.Parser.ParseTOMLString(Str);
+    Result := TOML.Parser.ParseTOMLString(ATOML);
   except
     Result := nil;
   end;
 end;
+
+function TryParseTOML(const ATOML: string; out Config: TTOMLTable): Boolean;
+begin
+  try
+    Config := TOML.Parser.ParseTOMLString(ATOML);
+    Result := Assigned(Config);
+  except
+    Config := nil;
+    Result := False;
+  end;
+end;
+
 
 { ===== Helper Functions ===== }
 
@@ -529,14 +556,15 @@ begin
   end;
 end;
 
-function TTOMLTableHelper.TryGetValue(const Key: string; out Value: TTOMLValue): Boolean;
+function TTOMLTableHelper.Clone: TTOMLTable;
+var
+  ATOML: string;
 begin
   try
-    Value := GetValueFromPath(Self, Key);
-    Result := Assigned(Value);
+    ATOML := Self.ToString;
+    Result := ParseTOML(ATOML);
   except
-    Value := nil;
-    Result := False;
+    Result := nil;
   end;
 end;
 
@@ -547,7 +575,7 @@ var
   OldValue: TTOMLValue;
   NewValue: TTOMLString;
 begin
-  Result := False;
+//  Result := False;
 
   try
     // Check if key exists
@@ -579,7 +607,7 @@ var
   OldValue: TTOMLValue;
   NewValue: TTOMLInteger;
 begin
-  Result := False;
+//  Result := False;
 
   try
     if Self.Items.TryGetValue(Key, OldValue) then
@@ -607,7 +635,7 @@ var
   OldValue: TTOMLValue;
   NewValue: TTOMLFloat;
 begin
-  Result := False;
+//  Result := False;
 
   try
     if Self.Items.TryGetValue(Key, OldValue) then
@@ -635,7 +663,7 @@ var
   OldValue: TTOMLValue;
   NewValue: TTOMLBoolean;
 begin
-  Result := False;
+//  Result := False;
 
   try
     if Self.Items.TryGetValue(Key, OldValue) then
@@ -663,7 +691,7 @@ var
   OldValue: TTOMLValue;
   NewValue: TTOMLDateTime;
 begin
-  Result := False;
+//  Result := False;
 
   try
     if Self.Items.TryGetValue(Key, OldValue) then
@@ -817,6 +845,34 @@ begin
   end;
 end;
 
+function TTOMLTableHelper.LoadFromString(const ATOML: string; ClearExisting: Boolean = True): Boolean;
+var
+  LoadedTable: TTOMLTable;
+  Pair: TPair<string, TTOMLValue>;
+begin
+  Result := False;
+
+  try
+    LoadedTable := TOML.Parser.ParseTOMLString(ATOML);
+    if not Assigned(LoadedTable) then
+      Exit;
+    try
+      if ClearExisting then
+        Self.Clear(True);
+      // Transfer all items from loaded table to self
+      for Pair in LoadedTable.Items do
+        Self.Items.Add(Pair.Key, Pair.Value);
+      // Don't free the values, they've been transferred
+      LoadedTable.Items.Clear;
+      Result := True;
+    finally
+      LoadedTable.Free;
+    end;
+  except
+    Result := False;
+  end;
+end;
+
 function TTOMLTableHelper.SaveToFile(const FileName: string; WriteBOM: Boolean): Boolean;
 begin
   try
@@ -828,7 +884,7 @@ end;
 
 { ===== TTOMLTableHelper - Serialization ===== }
 
-function TTOMLTableHelper.ToString: string;
+function TTOMLTableHelper.toString: string;
 begin
   try
     Result := TOML.Serializer.SerializeTOML(Self);
@@ -843,7 +899,7 @@ function TTOMLTableHelper.Remove(const Key: string; FreeValue: Boolean): Boolean
 var
   Value: TTOMLValue;
 begin
-  Result := False;
+//  Result := False;
 
   try
     Result := Self.Items.TryGetValue(Key, Value);
@@ -1147,7 +1203,7 @@ end;
 
 { ===== TTOMLArrayHelper - Serialization ===== }
 
-function TTOMLArrayHelper.ToString: string;
+function TTOMLArrayHelper.toString: string;
 begin
   try
     Result := TOML.Serializer.SerializeTOML(Self);
@@ -1179,7 +1235,7 @@ function TTOMLArrayHelper.RemoveAt(Index: Integer; FreeItem: Boolean): Boolean;
 var
   Item: TTOMLValue;
 begin
-  Result := False;
+//  Result := False;
 
   try
     Result := (Index >= 0) and (Index < Self.Count);
@@ -1196,3 +1252,4 @@ begin
 end;
 
 end.
+
