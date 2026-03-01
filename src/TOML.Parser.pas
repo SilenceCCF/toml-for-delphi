@@ -791,7 +791,7 @@ end;
 function TTOMLLexer.ScanDateTime: TToken;
 var
   StartColumn: Integer;
-//  i: Integer;
+  StartPos, StartLine: Integer; // 用于记录起始位置
   HasTime: Boolean;
   HasTimezone: Boolean;
   HasDate: Boolean;
@@ -814,12 +814,13 @@ var
   end;
 
 begin
+  StartPos := FPosition;
+  StartLine := FLine;
   StartColumn := FColumn;
   TempValue := '';
   HasDate := False;
   HasTime := False;
   HasTimezone := False;
-
   // Try to parse as date (YYYY-MM-DD)
   if ScanDigits(4) and (Peek = '-') then
   begin
@@ -859,10 +860,15 @@ begin
   end
   else if not HasDate then
   begin
+    FPosition := StartPos;
+    FLine := StartLine;
+    FColumn := StartColumn;
+    TempValue := '';
     // Try to parse as time only (HH:MM:SS[.fraction])
     if ScanDigits(2) and (Peek = ':') then
     begin
       TempValue := TempValue + Advance; // :
+
       if ScanDigits(2) and (Peek = ':') then
       begin
         TempValue := TempValue + Advance; // :
@@ -1259,7 +1265,6 @@ begin
   DateStr := FCurrentToken.Value;
   HasDate := False;
   HasTime := False;
-
   try
     // Initialize all components to 0
     Year := 0;
@@ -1311,13 +1316,14 @@ begin
             MilliSecond := StrToInt(Copy(FracStr + '000', 1, 3));
         end;
       end;
-    end
+    end;
+    {
     else if not HasDate then
     begin
       // Try to parse as time only (HH:MM:SS[.fraction])
-      if (P <= Length(DateStr)) and (DateStr[P] = 'T') then
+      if (P <= Length(DateStr)) then // and (DateStr[P] = 'T') then
       begin
-        Inc(P);
+//        Inc(P);
         if (P + 7 <= Length(DateStr)) and (DateStr[P + 2] = ':') and (DateStr[P + 5] = ':') then
         begin
           Hour := StrToInt(Copy(DateStr, P, 2));
@@ -1343,7 +1349,7 @@ begin
         end;
       end;
     end;
-
+    }
     // Create DateTime value
     if HasDate then
       DT := EncodeDate(Year, Month, Day)
@@ -1356,14 +1362,14 @@ begin
     if not (HasDate or HasTime) then
       raise ETOMLParserException.CreateFmt('Invalid datetime format: %s at line %d, column %d', [DateStr,
         FCurrentToken.Line, FCurrentToken.Column]);
-
-    Result := TTOMLDateTime.Create(DT);
+    Result := TTOMLDateTime.Create(DT, DateStr);
+//    Result := TTOMLDateTime.Create(DT);
   except
     on E: Exception do
       raise ETOMLParserException.CreateFmt('Error parsing datetime: %s at line %d, column %d', [E.Message,
         FCurrentToken.Line, FCurrentToken.Column]);
   end;
-  Result := TTOMLDateTime.Create(DT, DateStr);
+
   Advance;
 end;
 
@@ -1502,7 +1508,6 @@ begin
   end;
 end;
 
-
 procedure TTOMLParser.SetDottedKey(RootTable: TTOMLTable; const KeyParts: TArray<string>; Value: TTOMLValue);
 var
   CurrentTable: TTOMLTable;
@@ -1517,7 +1522,7 @@ begin
   // Single key - add directly
   if Length(KeyParts) = 1 then
   begin
-    if RootTable.TryGetValue(KeyParts[0],ExistingValue) then
+    if RootTable.TryGetValue(KeyParts[0], ExistingValue) then
 //    if RootTable.ContainsKey(KeyParts[0]) then
       raise ETOMLParserException.CreateFmt('Duplicate key: %s', [KeyParts[0]]);
 
@@ -1556,7 +1561,7 @@ begin
 
   // Add final value using the last key part
   LastKey := KeyParts[High(KeyParts)];
-  if CurrentTable.TryGetValue(LastKey,ExistingValue) then
+  if CurrentTable.TryGetValue(LastKey, ExistingValue) then
 //  if CurrentTable.ContainsKey(LastKey) then
     raise ETOMLParserException.CreateFmt('Duplicate key: %s', [LastKey]);
 
