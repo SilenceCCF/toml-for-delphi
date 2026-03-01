@@ -287,16 +287,57 @@ end;
 //    FStringBuilder.Append(AKey);
 //end;
 
+//procedure TTOMLSerializer.WriteKey(const AKey: string);
+//var
+//  KeyParts: TArray<string>;
+//  i: Integer;
+//  Part: string;
+//begin
+//  // Check if this is a dotted key
+//  if Pos('.', AKey) > 0 then
+//  begin
+//    // Split and write each part with appropriate quoting
+//    KeyParts := SplitDottedKey(AKey);
+//
+//    for i := 0 to High(KeyParts) do
+//    begin
+//      if i > 0 then
+//        FStringBuilder.Append('.');
+//
+//      Part := KeyParts[i];
+//      if NeedsQuoting(Part) then
+//        WriteString(Part)
+//      else
+//        FStringBuilder.Append(Part);
+//    end;
+//  end
+//  else
+//  begin
+//    // Simple key
+//    if NeedsQuoting(AKey) then
+//      WriteString(AKey)
+//    else
+//      FStringBuilder.Append(AKey);
+//  end;
+//end;
+
 procedure TTOMLSerializer.WriteKey(const AKey: string);
 var
   KeyParts: TArray<string>;
   i: Integer;
   Part: string;
 begin
-  // Check if this is a dotted key
-  if Pos('.', AKey) > 0 then
+  // Check if the whole key needs quoting
+  if NeedsQuoting(AKey) then
   begin
-    // Split and write each part with appropriate quoting
+    // Key needs quoting - write as single quoted key
+    // Don't split even if it contains dots
+    WriteString(AKey);
+  end
+  else if Pos('.', AKey) > 0 then
+  begin
+    // Key doesn't need quoting but has dots
+    // This is a dotted path - split and write parts
     KeyParts := SplitDottedKey(AKey);
 
     for i := 0 to High(KeyParts) do
@@ -313,11 +354,8 @@ begin
   end
   else
   begin
-    // Simple key
-    if NeedsQuoting(AKey) then
-      WriteString(AKey)
-    else
-      FStringBuilder.Append(AKey);
+    // Simple key without dots
+    FStringBuilder.Append(AKey);
   end;
 end;
 
