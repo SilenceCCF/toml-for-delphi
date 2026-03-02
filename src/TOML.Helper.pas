@@ -366,46 +366,6 @@ begin
   end;
 end;
 
-//function GetValueFromPath(Root: TTOMLTable; const Path: string): TTOMLValue;
-//var
-//  Parts: TArray<string>;
-//  CurrentTable: TTOMLTable;
-//  LastKey: string;
-//  ParentPath: string;
-//  i: Integer;
-//begin
-//  Result := nil;
-//
-//  if not Assigned(Root) then
-//    Exit;
-//
-//  if Path = '' then
-//    Exit;
-//
-//  try
-//    Parts := SplitPath(Path);
-//
-//    if Length(Parts) = 1 then
-//    begin
-//      Root.TryGetValue(Path, Result);
-//    end
-//    else
-//    begin
-//      LastKey := Parts[High(Parts)];
-//
-//      ParentPath := Parts[0];
-//      for i := 1 to High(Parts) - 1 do
-//        ParentPath := ParentPath + '.' + Parts[i];
-//
-//      CurrentTable := NavigateToTable(Root, ParentPath);
-//      if Assigned(CurrentTable) then
-//        CurrentTable.TryGetValue(LastKey, Result);
-//    end;
-//  except
-//    Result := nil;
-//  end;
-//end;
-
 function GetValueFromPath(Root: TTOMLTable; const Path: string): TTOMLValue;
 var
   Parts: TArray<string>;
@@ -421,20 +381,14 @@ begin
     Exit;
 
   try
-    { --- 新增判断逻辑：处理被双引号包裹的路径 --- }
     if (Length(Path) >= 2) and (Path[1] = '"') and (Path[Length(Path)] = '"') then
     begin
-      // 去掉前后的双引号
       CleanKey := Copy(Path, 2, Length(Path) - 2);
-      // 将其视为一个整体 Key，直接在当前层查找，不进行层级跳转
       Root.TryGetValue(CleanKey, Result);
       Exit;
     end;
-    { --------------------------------------- }
 
-    // 原始逻辑：进行路径拆分
     Parts := SplitPath(Path);
-
     if Length(Parts) = 1 then
     begin
       Root.TryGetValue(Path, Result);
@@ -442,13 +396,9 @@ begin
     else
     begin
       LastKey := Parts[High(Parts)];
-
-      // 构建父级路径
       ParentPath := Parts[0];
       for i := 1 to High(Parts) - 1 do
         ParentPath := ParentPath + '.' + Parts[i];
-
-      // 导航到对应的子表
       CurrentTable := NavigateToTable(Root, ParentPath);
       if Assigned(CurrentTable) then
         CurrentTable.TryGetValue(LastKey, Result);
