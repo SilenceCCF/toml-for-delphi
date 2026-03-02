@@ -135,10 +135,10 @@ type
   TTOMLDateTime = class(TTOMLValue)
   private
     FValue: TDateTime;
-    FRawString: string; // 新增：存储原始文本以保持精度
+    FRawString: string; // Store the original text to maintain accuracy
   protected
     function GetAsDateTime: TDateTime; override;
-    function GetAsString: string; override; // 重写，返回原始文本
+    function GetAsString: string; override;
   public
     constructor Create(const ADateTime: TDateTime; const ARawString: string = '');
     property Value: TDateTime read FValue write FValue;
@@ -411,3 +411,4 @@ begin
 end;
 
 end.
+
