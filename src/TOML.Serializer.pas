@@ -218,8 +218,7 @@ begin
 
       if Ch = '"' then
       begin
-        // 切换引号状态
-        // 关键：不添加引号本身！
+        // Toggle the quotes. Key point: Do not add the quotes themselves.
         InQuotes := not InQuotes;
         Inc(i);
         Continue;
@@ -227,7 +226,7 @@ begin
 
       if (Ch = '.') and (not InQuotes) then
       begin
-        // 只有引号外的点才是分隔符
+        // Only the period outside the quotation marks is a separator.
         if CurrentPart <> '' then
         begin
           Parts.Add(CurrentPart);
@@ -236,18 +235,18 @@ begin
       end
       else
       begin
-        // 普通字符或引号内的点
+        // Ordinary characters or dots within quotation marks
         CurrentPart := CurrentPart + Ch;
       end;
 
       Inc(i);
     end;
 
-    // 添加最后一部分
+    // Add the last part
     if CurrentPart <> '' then
       Parts.Add(CurrentPart);
 
-    // 转换为数组
+    // Convert to array
     SetLength(Result, Parts.Count);
     for i := 0 to Parts.Count - 1 do
       Result[i] := Parts[i];
@@ -279,47 +278,6 @@ begin
   Result := False;
 end;
 
-//procedure TTOMLSerializer.WriteKey(const AKey: string);
-//begin
-//  if NeedsQuoting(AKey) then
-//    WriteString(AKey)
-//  else
-//    FStringBuilder.Append(AKey);
-//end;
-
-//procedure TTOMLSerializer.WriteKey(const AKey: string);
-//var
-//  KeyParts: TArray<string>;
-//  i: Integer;
-//  Part: string;
-//begin
-//  // Check if this is a dotted key
-//  if Pos('.', AKey) > 0 then
-//  begin
-//    // Split and write each part with appropriate quoting
-//    KeyParts := SplitDottedKey(AKey);
-//
-//    for i := 0 to High(KeyParts) do
-//    begin
-//      if i > 0 then
-//        FStringBuilder.Append('.');
-//
-//      Part := KeyParts[i];
-//      if NeedsQuoting(Part) then
-//        WriteString(Part)
-//      else
-//        FStringBuilder.Append(Part);
-//    end;
-//  end
-//  else
-//  begin
-//    // Simple key
-//    if NeedsQuoting(AKey) then
-//      WriteString(AKey)
-//    else
-//      FStringBuilder.Append(AKey);
-//  end;
-//end;
 
 procedure TTOMLSerializer.WriteKey(const AKey: string);
 var
@@ -391,6 +349,7 @@ begin
   end;
   FStringBuilder.Append('"');
 end;
+
 
 procedure TTOMLSerializer.WriteDateTime(const ADateTimeValue: TTOMLValue);
 var
