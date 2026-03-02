@@ -270,9 +270,9 @@ var
 begin
   Stream := TFileStream.Create(AFileName, fmOpenRead or fmShareDenyNone);
   try
-    // 读取前3个字节用于判断BOM
+    // Read the first 3 bytes to determine the BOM.
     BytesRead := Stream.Read(BOM, 3);
-    // 重置流位置
+    // Reset Stream Position
     Stream.Position := 0;
     // 判断BOM类型
     if (BytesRead >= 3) and (BOM[0] = $EF) and (BOM[1] = $BB) and (BOM[2] = $BF) then
@@ -282,7 +282,7 @@ begin
     else if (BytesRead >= 2) and (BOM[0] = $FE) and (BOM[1] = $FF) then
       Encoding := TEncoding.BigEndianUnicode
     else
-      // 无BOM时默认使用 UTF-8 编码
+      // UTF-8 encoding is used by default when there is no BOM.
       Encoding := TEncoding.UTF8;
     StringList := TStringList.Create;
     try
@@ -790,8 +790,7 @@ end;
 
 function TTOMLLexer.ScanDateTime: TToken;
 var
-  StartColumn: Integer;
-  StartPos, StartLine: Integer; // 用于记录起始位置
+  StartColumn, StartPos, StartLine: Integer;
   HasTime: Boolean;
   HasTimezone: Boolean;
   HasDate: Boolean;
@@ -1317,7 +1316,7 @@ begin
         end;
       end;
     end;
-    {
+    { The following code will never be executed and is therefore obsolete.
     else if not HasDate then
     begin
       // Try to parse as time only (HH:MM:SS[.fraction])
