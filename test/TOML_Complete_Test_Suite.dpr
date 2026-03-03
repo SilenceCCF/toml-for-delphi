@@ -4,7 +4,14 @@ program TOML_Complete_Test_Suite;
 {$R *.res}
 
 uses
-  SysUtils, Classes, DateUtils, TOML.Types, TOML.Parser, TOML.Serializer, TOML.Helper, Math;
+  SysUtils,
+  Classes,
+  DateUtils,
+  TOML.Types,
+  TOML.Parser,
+  TOML.Serializer,
+  TOML.Helper,
+  Math;
 
 var
   TotalTests: Integer = 0;
@@ -17,12 +24,12 @@ begin
   if Condition then
   begin
     Inc(PassedTests);
-    WriteLn('  ✓ ', TestName);
+    Writeln('  ✓ ', TestName);
   end
   else
   begin
     Inc(FailedTests);
-    WriteLn('  ✗ FAILED: ', TestName);
+    Writeln('  ✗ FAILED: ', TestName);
   end;
 end;
 
@@ -32,14 +39,14 @@ begin
   if Expected = Actual then
   begin
     Inc(PassedTests);
-    WriteLn('  ✓ ', TestName);
+    Writeln('  ✓ ', TestName);
   end
   else
   begin
     Inc(FailedTests);
-    WriteLn('  ✗ FAILED: ', TestName);
-    WriteLn('    Expected: ', Expected);
-    WriteLn('    Actual:   ', Actual);
+    Writeln('  ✗ FAILED: ', TestName);
+    Writeln('    Expected: ', Expected);
+    Writeln('    Actual:   ', Actual);
   end;
 end;
 
@@ -49,14 +56,14 @@ begin
   if Expected = Actual then
   begin
     Inc(PassedTests);
-    WriteLn('  ✓ ', TestName);
+    Writeln('  ✓ ', TestName);
   end
   else
   begin
     Inc(FailedTests);
-    WriteLn('  ✗ FAILED: ', TestName);
-    WriteLn('    Expected: ', Expected);
-    WriteLn('    Actual:   ', Actual);
+    Writeln('  ✗ FAILED: ', TestName);
+    Writeln('    Expected: ', Expected);
+    Writeln('    Actual:   ', Actual);
   end;
 end;
 
@@ -66,27 +73,28 @@ begin
   if Abs(Expected - Actual) < 0.0001 then
   begin
     Inc(PassedTests);
-    WriteLn('  ✓ ', TestName);
+    Writeln('  ✓ ', TestName);
   end
   else
   begin
     Inc(FailedTests);
-    WriteLn('  ✗ FAILED: ', TestName);
-    WriteLn('    Expected: ', Expected: 0: 4);
-    WriteLn('    Actual:   ', Actual: 0: 4);
+    Writeln('  ✗ FAILED: ', TestName);
+    Writeln('    Expected: ', Expected: 0: 4);
+    Writeln('    Actual:   ', Actual: 0: 4);
   end;
 end;
 { ============================================================================
   TEST 1: Basic Data Types
   ============================================================================ }
+
 procedure Test1_BasicDataTypes;
 var
   Config: TTOMLTable;
   TOML: string;
 begin
-  WriteLn('═══════════════════════════════════════════════════════════');
-  WriteLn('Test 1: Basic Data Types');
-  WriteLn('═══════════════════════════════════════════════════════════');
+  Writeln('═══════════════════════════════════════════════════════════');
+  Writeln('Test 1: Basic Data Types');
+  Writeln('═══════════════════════════════════════════════════════════');
 
   Config := TTOMLTable.Create;
   try
@@ -112,16 +120,17 @@ begin
     // Test serialization
     TOML := Config.ToString;
     AssertTrue('Serialization not empty', Length(TOML) > 0);
-    WriteLn('    Generated TOML:');
-    WriteLn('    ', StringReplace(TOML, #13#10, #13#10'    ', [rfReplaceAll]));
+    Writeln('    Generated TOML:');
+    Writeln('    ', StringReplace(TOML, #13#10, #13#10'    ', [rfReplaceAll]));
   finally
     Config.Free;
   end;
-  WriteLn;
+  Writeln;
 end;
 { ============================================================================
   TEST 2: TryGet Methods
   ============================================================================ }
+
 procedure Test2_TryGetMethods;
 var
   Config: TTOMLTable;
@@ -132,9 +141,9 @@ var
   DTVal: TDateTime;
   DTStr: string;
 begin
-  WriteLn('═══════════════════════════════════════════════════════════');
-  WriteLn('Test 2: TryGet Methods');
-  WriteLn('═══════════════════════════════════════════════════════════');
+  Writeln('═══════════════════════════════════════════════════════════');
+  Writeln('Test 2: TryGet Methods');
+  Writeln('═══════════════════════════════════════════════════════════');
 
   Config := TTOMLTable.Create;
   try
@@ -166,22 +175,23 @@ begin
     // Test GetDateTimeValue (high precision)
     DTStr := Config.GetDateTimeValue('timestamp', 'default');
     AssertTrue('GetDateTimeValue returns value', DTStr <> 'default');
-    WriteLn('    DateTime string: ', DTStr);
+    Writeln('    DateTime string: ', DTStr);
   finally
     Config.Free;
   end;
-  WriteLn;
+  Writeln;
 end;
 { ============================================================================
   TEST 3: Builder Pattern
   ============================================================================ }
+
 procedure Test3_BuilderPattern;
 var
   Config: TTOMLTable;
 begin
-  WriteLn('═══════════════════════════════════════════════════════════');
-  WriteLn('Test 3: Builder Pattern');
-  WriteLn('═══════════════════════════════════════════════════════════');
+  Writeln('═══════════════════════════════════════════════════════════');
+  Writeln('Test 3: Builder Pattern');
+  Writeln('═══════════════════════════════════════════════════════════');
 
   Config := TTOMLTable.Create;
   try
@@ -194,18 +204,19 @@ begin
   finally
     Config.Free;
   end;
-  WriteLn;
+  Writeln;
 end;
 { ============================================================================
   TEST 4: Overwrite Protection
   ============================================================================ }
+
 procedure Test4_OverwriteProtection;
 var
   Config: TTOMLTable;
 begin
-  WriteLn('═══════════════════════════════════════════════════════════');
-  WriteLn('Test 4: Overwrite Protection');
-  WriteLn('═══════════════════════════════════════════════════════════');
+  Writeln('═══════════════════════════════════════════════════════════');
+  Writeln('Test 4: Overwrite Protection');
+  Writeln('═══════════════════════════════════════════════════════════');
 
   Config := TTOMLTable.Create;
   try
@@ -232,19 +243,20 @@ begin
   finally
     Config.Free;
   end;
-  WriteLn;
+  Writeln;
 end;
 { ============================================================================
   TEST 5: Arrays
   ============================================================================ }
+
 procedure Test5_Arrays;
 var
   Config: TTOMLTable;
   Arr: TTOMLArray;
 begin
-  WriteLn('═══════════════════════════════════════════════════════════');
-  WriteLn('Test 5: Arrays');
-  WriteLn('═══════════════════════════════════════════════════════════');
+  Writeln('═══════════════════════════════════════════════════════════');
+  Writeln('Test 5: Arrays');
+  Writeln('═══════════════════════════════════════════════════════════');
 
   Config := TTOMLTable.Create;
   try
@@ -270,20 +282,21 @@ begin
   finally
     Config.Free;
   end;
-  WriteLn;
+  Writeln;
 end;
 { ============================================================================
   TEST 6: Nested Tables
   ============================================================================ }
+
 procedure Test6_NestedTables;
 var
   Config: TTOMLTable;
   Owner: TTOMLTable;
   Database: TTOMLTable;
 begin
-  WriteLn('═══════════════════════════════════════════════════════════');
-  WriteLn('Test 6: Nested Tables');
-  WriteLn('═══════════════════════════════════════════════════════════');
+  Writeln('═══════════════════════════════════════════════════════════');
+  Writeln('Test 6: Nested Tables');
+  Writeln('═══════════════════════════════════════════════════════════');
 
   Config := TTOMLTable.Create;
   try
@@ -310,35 +323,37 @@ begin
 
     // Test serialization
     var TOML := Config.ToString;
-    WriteLn('    Generated TOML with nested tables:');
-    WriteLn('    ', StringReplace(TOML, #13#10, #13#10'    ', [rfReplaceAll]));
+    Writeln('    Generated TOML with nested tables:');
+    Writeln('    ', StringReplace(TOML, #13#10, #13#10'    ', [rfReplaceAll]));
   finally
     Config.Free;
   end;
-  WriteLn;
+  Writeln;
 end;
 { ============================================================================
   TEST 7: Quoted Keys (including dots)
   ============================================================================ }
+
 procedure Test7_QuotedKeys;
 var
   Config: TTOMLTable;
   Site: TTOMLTable;
   TOML: string;
 begin
-  WriteLn('═══════════════════════════════════════════════════════════');
-  WriteLn('Test 7: Quoted Keys with Dots');
-  WriteLn('═══════════════════════════════════════════════════════════');
+  Writeln('═══════════════════════════════════════════════════════════');
+  Writeln('Test 7: Quoted Keys with Dots');
+  Writeln('═══════════════════════════════════════════════════════════');
 
   Config := TTOMLTable.Create;
   try
     // Test simple quoted key with dot
-    Config.SetStr('google.com', 'search engine');
+    Config.SetStr('"google.com"', 'search engine');
     AssertEqual('Quoted key with dot', 'search engine', Config.GetStr('"google.com"'));
-
+    Config.SetStr('cctv.com', 'TV');
+    AssertEqual('Key with a dot but no quotes', 'TV', Config.GetStr('cctv.com'));
     // Test nested structure with quoted key
     Site := TTOMLTable.Create;
-    Site.SetStr('tt.com', 'social media');
+    Site.SetStr('"tt.com"', 'social media');
     Site.SetStr('owner', 'ByteDance');
     Config.SetTable('site', Site);
 //    Writeln('config: '+sLineBreak+config.tostring);
@@ -349,8 +364,8 @@ begin
 
     // Test serialization
     TOML := Config.ToString;
-    WriteLn('    Generated TOML with quoted keys:');
-    WriteLn('    ', StringReplace(TOML, #13#10, #13#10'    ', [rfReplaceAll]));
+    Writeln('    Generated TOML with quoted keys:');
+    Writeln('    ', StringReplace(TOML, #13#10, #13#10'    ', [rfReplaceAll]));
 
     // Verify serialization format
     AssertTrue('Quoted key in output', Pos('"google.com"', TOML) > 0);
@@ -358,20 +373,21 @@ begin
   finally
     Config.Free;
   end;
-  WriteLn;
+  Writeln;
 end;
 { ============================================================================
   TEST 8: File Operations
   ============================================================================ }
+
 procedure Test8_FileOperations;
 var
   Config: TTOMLTable;
   Loaded: TTOMLTable;
   FileName: string;
 begin
-  WriteLn('═══════════════════════════════════════════════════════════');
-  WriteLn('Test 8: File Operations');
-  WriteLn('═══════════════════════════════════════════════════════════');
+  Writeln('═══════════════════════════════════════════════════════════');
+  Writeln('Test 8: File Operations');
+  Writeln('═══════════════════════════════════════════════════════════');
 
   FileName := 'test_config.toml';
   Config := TTOMLTable.Create;
@@ -399,19 +415,20 @@ begin
   finally
     Config.Free;
   end;
-  WriteLn;
+  Writeln;
 end;
 { ============================================================================
   TEST 9: String Operations (LoadFromString)
   ============================================================================ }
+
 procedure Test9_StringOperations;
 var
   Config: TTOMLTable;
   TOML: string;
 begin
-  WriteLn('═══════════════════════════════════════════════════════════');
-  WriteLn('Test 9: String Operations');
-  WriteLn('═══════════════════════════════════════════════════════════');
+  Writeln('═══════════════════════════════════════════════════════════');
+  Writeln('Test 9: String Operations');
+  Writeln('═══════════════════════════════════════════════════════════');
 
   TOML := 'title = "Test Document"' + sLineBreak + 'author = "John Doe"' + sLineBreak + 'year = 2024' +
     sLineBreak + 'published = true';
@@ -427,30 +444,31 @@ begin
   finally
     Config.Free;
   end;
-  WriteLn;
+  Writeln;
 end;
 { ============================================================================
   TEST 10: DateTime with High Precision
   ============================================================================ }
+
 procedure Test10_DateTimeHighPrecision;
 var
   Config: TTOMLTable;
   TOML: string;
   DTStr: string;
 begin
-  WriteLn('═══════════════════════════════════════════════════════════');
-  WriteLn('Test 10: DateTime with High Precision');
-  WriteLn('═══════════════════════════════════════════════════════════');
+  Writeln('═══════════════════════════════════════════════════════════');
+  Writeln('Test 10: DateTime with High Precision');
+  Writeln('═══════════════════════════════════════════════════════════');
 
   // Parse TOML with high-precision datetime
   TOML := 'timestamp1 = 2024-05-27T07:32:00Z' + sLineBreak;
-  toml := toml + 'timestamp2 = 1979-05-27T00:32:00-07:00' + sLineBreak;
-  toml :=toml + 'timestamp3 = 1979-05-27T00:32:00.999999Z' + sLineBreak;
-  toml := toml + 'date_only = 2024-05-27' + sLineBreak;
-  toml := toml + 'time_only = 12:32:00' + sLineBreak;
+  TOML := TOML + 'timestamp2 = 1979-05-27T00:32:00-07:00' + sLineBreak;
+  TOML := TOML + 'timestamp3 = 1979-05-27T00:32:00.999999Z' + sLineBreak;
+  TOML := TOML + 'date_only = 2024-05-27' + sLineBreak;
+  TOML := TOML + 'time_only = 12:32:00' + sLineBreak;
 //  WriteLn('TOML: '+sLineBreak+TOML);
 
-  Config := ParseTOML(toml);
+  Config := ParseTOML(TOML);
   // TTOMLTable.Create;
   try
     //AssertTrue('Parse datetime TOML', Config.LoadFromString(TOML));
@@ -458,22 +476,22 @@ begin
     // Test GetDateTimeValue (returns raw string with full precision)
     DTStr := Config.GetDateTimeValue('timestamp1', '');
     AssertTrue('DateTime1 not empty', DTStr <> '');
-    WriteLn('    timestamp1: ', DTStr);
+    Writeln('    timestamp1: ', DTStr);
 
     DTStr := Config.GetDateTimeValue('timestamp2', '');
     AssertTrue('DateTime2 not empty', DTStr <> '');
-    WriteLn('    timestamp2: ', DTStr);
+    Writeln('    timestamp2: ', DTStr);
 
     DTStr := Config.GetDateTimeValue('timestamp3', '');
     AssertTrue('DateTime3 not empty', DTStr <> '');
     AssertTrue('DateTime3 has microseconds', Pos('.999999', DTStr) > 0);
-    WriteLn('    timestamp3 (with microseconds): ', DTStr);
+    Writeln('    timestamp3 (with microseconds): ', DTStr);
 
     DTStr := Config.GetDateTimeValue('date_only', '');
-    WriteLn('    date_only: ', DTStr);
+    Writeln('    date_only: ', DTStr);
 //    DTstr:=DateTimeToStr(Config.GetDateTime('time_only'));
     DTStr := Config.GetDateTimeValue('time_only', '');
-    WriteLn('    time_only: ', DTStr);
+    Writeln('    time_only: ', DTStr);
 
     // Test TryGetDateTimeValue
     AssertTrue('TryGetDateTimeValue success', Config.TryGetDateTimeValue('timestamp3', DTStr));
@@ -481,19 +499,20 @@ begin
   finally
     Config.Free;
   end;
-  WriteLn;
+  Writeln;
 end;
 { ============================================================================
   TEST 11: Special Cases and Edge Cases
   ============================================================================ }
+
 procedure Test11_SpecialCases;
 var
   Config: TTOMLTable;
   TOML: string;
 begin
-  WriteLn('═══════════════════════════════════════════════════════════');
-  WriteLn('Test 11: Special Cases');
-  WriteLn('═══════════════════════════════════════════════════════════');
+  Writeln('═══════════════════════════════════════════════════════════');
+  Writeln('Test 11: Special Cases');
+  Writeln('═══════════════════════════════════════════════════════════');
 
   Config := TTOMLTable.Create;
   try
@@ -534,19 +553,20 @@ begin
   finally
     Config.Free;
   end;
-  WriteLn;
+  Writeln;
 end;
 { ============================================================================
   TEST 12: Memory Management and Cleanup
   ============================================================================ }
+
 procedure Test12_MemoryManagement;
 var
   Config: TTOMLTable;
   Arr: TTOMLArray;
 begin
-  WriteLn('═══════════════════════════════════════════════════════════');
-  WriteLn('Test 12: Memory Management');
-  WriteLn('═══════════════════════════════════════════════════════════');
+  Writeln('═══════════════════════════════════════════════════════════');
+  Writeln('Test 12: Memory Management');
+  Writeln('═══════════════════════════════════════════════════════════');
 
   Config := TTOMLTable.Create;
   try
@@ -575,19 +595,20 @@ begin
   finally
     Config.Free;
   end;
-  WriteLn;
+  Writeln;
 end;
 { ============================================================================
   TEST 13: TOML Compliance - Escape Sequences
   ============================================================================ }
+
 procedure Test13_EscapeSequences;
 var
   Config: TTOMLTable;
   TOML: string;
 begin
-  WriteLn('═══════════════════════════════════════════════════════════');
-  WriteLn('Test 13: TOML Compliance - Escape Sequences');
-  WriteLn('═══════════════════════════════════════════════════════════');
+  Writeln('═══════════════════════════════════════════════════════════');
+  Writeln('Test 13: TOML Compliance - Escape Sequences');
+  Writeln('═══════════════════════════════════════════════════════════');
 
   TOML := 'backspace = "test\bchar"' + sLineBreak + 'formfeed = "test\fchar"' + sLineBreak +
     'newline = "test\nchar"' + sLineBreak + 'return = "test\rchar"' + sLineBreak + 'tab = "test\tchar"' +
@@ -618,23 +639,24 @@ begin
 
     Val := Config.GetStr('unicode');
     AssertEqual('Unicode escape', 'José', Val);
-    WriteLn('    Unicode result: ', Val);
+    Writeln('    Unicode result: ', Val);
   finally
     Config.Free;
   end;
-  WriteLn;
+  Writeln;
 end;
 { ============================================================================
   TEST 14: Complete Round-Trip Test
   ============================================================================ }
+
 procedure Test14_RoundTrip;
 var
   Config1, Config2: TTOMLTable;
   TOML1, TOML2: string;
 begin
-  WriteLn('═══════════════════════════════════════════════════════════');
-  WriteLn('Test 14: Round-Trip Test');
-  WriteLn('═══════════════════════════════════════════════════════════');
+  Writeln('═══════════════════════════════════════════════════════════');
+  Writeln('Test 14: Round-Trip Test');
+  Writeln('═══════════════════════════════════════════════════════════');
 
   Config1 := TTOMLTable.Create;
   try
@@ -652,8 +674,8 @@ begin
 
     // Serialize
     TOML1 := Config1.ToString;
-    WriteLn('    Original TOML:');
-    WriteLn('    ', StringReplace(TOML1, #13#10, #13#10'    ', [rfReplaceAll]));
+    Writeln('    Original TOML:');
+    Writeln('    ', StringReplace(TOML1, #13#10, #13#10'    ', [rfReplaceAll]));
 
     // Parse back
     Config2 := TTOMLTable.Create;
@@ -676,9 +698,9 @@ begin
 
       // Serialize again
       TOML2 := Config2.ToString;
-      WriteLn;
-      WriteLn('    Re-serialized TOML:');
-      WriteLn('    ', StringReplace(TOML2, #13#10, #13#10'    ', [rfReplaceAll]));
+      Writeln;
+      Writeln('    Re-serialized TOML:');
+      Writeln('    ', StringReplace(TOML2, #13#10, #13#10'    ', [rfReplaceAll]));
 
       // Should be functionally equivalent (though formatting may differ)
       AssertTrue('Round-trip not empty', Length(TOML2) > 0);
@@ -688,7 +710,7 @@ begin
   finally
     Config1.Free;
   end;
-  WriteLn;
+  Writeln;
 end;
 
 { ============================================================================
@@ -696,12 +718,12 @@ end;
   ============================================================================ }
 begin
   try
-    WriteLn;
-    WriteLn('═══════════════════════════════════════════════════════════');
-    WriteLn('  TOML Library - Complete Test Suite                       ');
-    WriteLn('  Testing all features, bug fixes, and enhancements        ');
-    WriteLn('═══════════════════════════════════════════════════════════');
-    WriteLn;
+    Writeln;
+    Writeln('═══════════════════════════════════════════════════════════');
+    Writeln('  TOML Library - Complete Test Suite                       ');
+    Writeln('  Testing all features, bug fixes, and enhancements        ');
+    Writeln('═══════════════════════════════════════════════════════════');
+    Writeln;
 
     Test1_BasicDataTypes;
     Test2_TryGetMethods;
@@ -718,43 +740,41 @@ begin
     Test13_EscapeSequences;
     Test14_RoundTrip;
 
-
-    WriteLn('═══════════════════════════════════════════════════════════');
-    WriteLn('Test Summary');
-    WriteLn('═══════════════════════════════════════════════════════════');
-    WriteLn('Total Tests:  ', TotalTests);
-    WriteLn('Passed:       ', PassedTests, ' (', (PassedTests * 100) div TotalTests, '%)');
-    WriteLn('Failed:       ', FailedTests);
-    WriteLn;
+    Writeln('═══════════════════════════════════════════════════════════');
+    Writeln('Test Summary');
+    Writeln('═══════════════════════════════════════════════════════════');
+    Writeln('Total Tests:  ', TotalTests);
+    Writeln('Passed:       ', PassedTests, ' (', (PassedTests * 100) div TotalTests, '%)');
+    Writeln('Failed:       ', FailedTests);
+    Writeln;
 
     if FailedTests = 0 then
     begin
-      WriteLn('═════════════════════════════════════════════════════════════');
-      WriteLn('   ✓ ALL TESTS PASSED!                                     ');
-      WriteLn('═════════════════════════════════════════════════════════════');
+      Writeln('═════════════════════════════════════════════════════════════');
+      Writeln('   ✓ ALL TESTS PASSED!                                     ');
+      Writeln('═════════════════════════════════════════════════════════════');
       ExitCode := 0;
     end
     else
     begin
-      WriteLn('═════════════════════════════════════════════════════════════');
-      WriteLn('  ✗ SOME TESTS FAILED - Please review                      ');
-      WriteLn('═════════════════════════════════════════════════════════════');
+      Writeln('═════════════════════════════════════════════════════════════');
+      Writeln('  ✗ SOME TESTS FAILED - Please review                      ');
+      Writeln('═════════════════════════════════════════════════════════════');
       ExitCode := 1;
     end;
 
   except
     on E: Exception do
     begin
-      WriteLn;
-      WriteLn('═══════════════════════════════════════════════════════════');
-      WriteLn('FATAL ERROR: ', E.ClassName, ': ', E.Message);
-      WriteLn('═══════════════════════════════════════════════════════════');
+      Writeln;
+      Writeln('═══════════════════════════════════════════════════════════');
+      Writeln('FATAL ERROR: ', E.ClassName, ': ', E.Message);
+      Writeln('═══════════════════════════════════════════════════════════');
       ExitCode := 2;
     end;
   end;
 
-  WriteLn;
-  WriteLn('Press Enter to exit...');
-  ReadLn;
+  Writeln;
+  Writeln('Press Enter to exit...');
+  Readln;
 end.
-
