@@ -474,8 +474,6 @@ begin
             TempValue := TempValue + '\';  // Backslash
           '"':
             TempValue := TempValue + '"';  // Quote
-          '''':
-            TempValue := TempValue + ''''; // Single quote
           'u', 'U':
             begin
               // Unicode escape implementation (see FIX 1 above)
@@ -550,7 +548,31 @@ begin
         Advance;
       end
       else
+      begin
+        // Bare character — validate control characters
+        // TOML forbids U+0000-U+0008, U+000A-U+001F, U+007F in all strings.
+        // U+0009 (tab) is allowed in basic strings and multiline strings.
+        // Newlines (U+000A, U+000D) are allowed only in multiline strings.
+        var Ch: Char := Peek;
+        var Ord_Ch: Integer := Ord(Ch);
+        var IsTab      := (Ord_Ch = $09);
+        var IsNewline  := (Ord_Ch = $0A) or (Ord_Ch = $0D);
+        var IsControl  := (Ord_Ch <= $08) or
+                          ((Ord_Ch >= $0A) and (Ord_Ch <= $1F)) or
+                          (Ord_Ch = $7F);
+        if IsControl then
+        begin
+          if IsNewline and IsMultiline then
+            // allowed — multiline strings may contain newlines
+          else if IsTab and (not IsLiteral) then
+            // tab is allowed in basic strings
+          else
+            raise ETOMLParserException.CreateFmt(
+              'Control character U+%.4X is not allowed in strings at line %d column %d',
+              [Ord_Ch, FLine, FColumn]);
+        end;
         TempValue := TempValue + Advance;
+      end;
     end;
 
     Result.TokenType := ttString;
@@ -733,6 +755,21 @@ begin
     else
       Advance;
 
+  // Reject leading zeros in decimal integers (TOML 1.0.0)
+  // Valid: 0, 0.5, 0e1  — Invalid: 01, 007
+  // TempValue here contains only the digits (sign and 0x/0o/0b already handled above).
+  // Strip any leading sign for the check.
+  if not IsFloat then
+  begin
+    var CheckStr: string := TempValue;
+    if (Length(CheckStr) > 0) and CharInSet(CheckStr[1], ['+', '-']) then
+      Delete(CheckStr, 1, 1);
+    if (Length(CheckStr) > 1) and (CheckStr[1] = '0') then
+      raise ETOMLParserException.CreateFmt(
+        'Leading zeros are not allowed in decimal integers: %s at line %d column %d',
+        [TempValue, FLine, StartColumn]);
+  end;
+
   // Check for decimal point
   if (Peek = '.') and IsDigit(PeekNext) then
   begin
@@ -833,25 +870,46 @@ begin
   end;
 
   // Try to parse time (HH:MM:SS[.fraction])
-  if HasDate and (Peek = 'T') then
+  if HasDate and ((Peek = 'T') or (Peek = ' ')) then
   begin
-    TempValue := TempValue + Advance; // T
-    if ScanDigits(2) and (Peek = ':') then
+    var CanContinue := False;
+
+    if Peek = 'T' then
     begin
-      TempValue := TempValue + Advance; // :
+      // 'T' 总是有效的分隔符
+      CanContinue := True;
+    end
+    else if Peek = ' ' then
+    begin
+      // 空格只有在后面跟着时间格式时才有效
+      // 前瞻检查：下一个应该是 HH:MM:SS 格式
+      var NextPos := FPosition + 1;
+      if (NextPos + 7 <= Length(FInput)) then
+      begin
+        CanContinue := IsDigit(FInput[NextPos]) and IsDigit(FInput[NextPos + 1]) and (FInput[NextPos + 2] =
+          ':') and IsDigit(FInput[NextPos + 3]) and IsDigit(FInput[NextPos + 4]) and (FInput[NextPos + 5] = ':');
+      end;
+    end;
+    if CanContinue then
+    begin
+      TempValue := TempValue + Advance; // T
       if ScanDigits(2) and (Peek = ':') then
       begin
         TempValue := TempValue + Advance; // :
-        if ScanDigits(2) then
+        if ScanDigits(2) and (Peek = ':') then
         begin
-          HasTime := True;
+          TempValue := TempValue + Advance; // :
+          if ScanDigits(2) then
+          begin
+            HasTime := True;
 
           // Optional fractional seconds
-          if Peek = '.' then
-          begin
-            TempValue := TempValue + Advance; // .
-            while IsDigit(Peek) do
-              TempValue := TempValue + Advance;
+            if Peek = '.' then
+            begin
+              TempValue := TempValue + Advance; // .
+              while IsDigit(Peek) do
+                TempValue := TempValue + Advance;
+            end;
           end;
         end;
       end;
@@ -906,9 +964,8 @@ begin
           TempValue := TempValue + Advance; // :
           if ScanDigits(2) then
             HasTimezone := True;
-        end
-        else
-          HasTimezone := True;
+        end;
+        // No colon → not a valid timezone offset; do NOT set HasTimezone
       end;
     end;
   end;
@@ -1287,9 +1344,9 @@ begin
     end;
 
     // Try to parse time part (HH:MM:SS[.fraction])
-    if (P <= Length(DateStr)) and ((DateStr[P] = 'T') or not HasDate) then
+    if (P <= Length(DateStr)) and ((DateStr[P] = 'T') or (DateStr[P] = ' ') or not HasDate) then
     begin
-      if DateStr[P] = 'T' then
+      if (DateStr[P] = 'T') or (DateStr[P] = ' ') then
         Inc(P);
 
       if (P + 7 <= Length(DateStr)) and (DateStr[P + 2] = ':') and (DateStr[P + 5] = ':') then
@@ -1375,7 +1432,6 @@ end;
 function TTOMLParser.ParseArray: TTOMLArray;
 var
   ItemValue: TTOMLValue;
-  HasNewline: Boolean;
 begin
   Result := TTOMLArray.Create;
   try
@@ -1385,21 +1441,21 @@ begin
     begin
       repeat
         // Skip any newlines between array elements
-        HasNewline := False;
         while FCurrentToken.TokenType = ttNewLine do
-        begin
-          HasNewline := True;
           Advance;
-        end;
+
+        // Check for trailing comma: comma was consumed but only whitespace/newline follows
+        if FCurrentToken.TokenType = ttRBracket then
+          raise ETOMLParserException.CreateFmt(
+            'Trailing comma is not allowed in arrays at line %d, column %d',
+            [FCurrentToken.Line, FCurrentToken.Column]);
+
         ItemValue := ParseValue;
         Result.Add(ItemValue);
 
-        // Skip any newlines after array elements before comma
+        // Skip any newlines after value, before comma or closing bracket
         while FCurrentToken.TokenType = ttNewLine do
-        begin
-          HasNewline := True;
           Advance;
-        end
       until not Match(ttComma);
 
       // Skip any newlines before closing bracket
@@ -1423,9 +1479,22 @@ begin
     if FCurrentToken.TokenType <> ttRBrace then
     begin
       repeat
+        // Newlines are not allowed inside inline tables (TOML 1.0.0)
+        if FCurrentToken.TokenType = ttNewLine then
+          raise ETOMLParserException.CreateFmt(
+            'Newlines are not allowed inside inline tables at line %d, column %d',
+            [FCurrentToken.Line, FCurrentToken.Column]);
         with ParseKeyValue do
           Result.Add(Key, Value);
       until not Match(ttComma);
+
+      // Check for trailing comma
+      if FCurrentToken.TokenType = ttRBrace then
+        // fine — loop exited because next token is }  (no trailing comma consumed)
+      else if FCurrentToken.TokenType = ttNewLine then
+        raise ETOMLParserException.CreateFmt(
+          'Newlines are not allowed inside inline tables at line %d, column %d',
+          [FCurrentToken.Line, FCurrentToken.Column]);
     end;
 
     Expect(ttRBrace);
@@ -1453,57 +1522,16 @@ begin
 end;
 
 function TTOMLParser.SplitDottedKey(const CompositeKey: string): TArray<string>;
-var
-  Parts: TList<string>;
-  CurrentPart: string;
-  i: Integer;
 begin
-  { This function splits a key that may contain dots
-    For example:
-      "a.b.c"        -> ["a", "b", "c"]
-      "a.\"b.c\".d"  -> ["a", "b.c", "d"]  (quotes are already removed by lexer)
-      "site.google.com"  -> ["site", "google", "com"]
-
-    Note: At this point, quoted keys have already been parsed by the lexer,
-    so we just need to split by dots that are not inside quotes.
-
-    However, the lexer returns the VALUE without quotes, so we actually
-    receive keys like: "site.google.com" as just the string with quotes removed.
-
-    The real issue is that we're concatenating keys with dots in ParseKeyValue,
-    losing the information about which parts were quoted.
-  }
-
-  Parts := TList<string>.Create;
-  try
-    CurrentPart := '';
-
-    // Simple split by dots for now
-    // This works because ParseKeyValue gives us already-parsed key parts
-    for i := 1 to Length(CompositeKey) do
-    begin
-      if CompositeKey[i] = '.' then
-      begin
-        if CurrentPart <> '' then
-        begin
-          Parts.Add(CurrentPart);
-          CurrentPart := '';
-        end;
-      end
-      else
-        CurrentPart := CurrentPart + CompositeKey[i];
-    end;
-
-    // Add last part
-    if CurrentPart <> '' then
-      Parts.Add(CurrentPart);
-
-    // Convert to array
-    SetLength(Result, Parts.Count);
-    for i := 0 to Parts.Count - 1 do
-      Result[i] := Parts[i];
-  finally
-    Parts.Free;
+  // ParseKeyValue now packs key segments with #31 (ASCII Unit Separator) as
+  // delimiter, so each segment is preserved verbatim even if it contains dots.
+  // Example: "site" + #31 + "tt.com" + #31 + "owner"  ->  ["site","tt.com","owner"]
+  if Pos(#31, CompositeKey) > 0 then
+    Result := CompositeKey.Split([#31])
+  else
+  begin
+    SetLength(Result, 1);
+    Result[0] := CompositeKey;
   end;
 end;
 
@@ -1579,44 +1607,32 @@ var
   FullKey: string;
   i: Integer;
 begin
-  { Parse a key-value pair
-
-    TOML supports dotted keys:
-      name = "value"              # Simple key
-      physical.color = "orange"   # Dotted key
-      site."google.com" = true    # Quoted key with dot
-
-    Each part separated by dots can be either:
-    - Bare key (identifier): [a-zA-Z0-9_-]+
-    - Quoted key (string): Any string including dots
-  }
+  { Parse a key-value pair.
+    Key segments are collected individually by ParseKey (lexer already strips
+    quotes and returns the raw content).  They are then joined with #31
+    (ASCII Unit Separator) so that segments containing dots — e.g. "tt.com" —
+    are preserved verbatim.
+    SplitDottedKey / Parse use the same #31 delimiter to rebuild the path. }
 
   KeyParts := TList<string>.Create;
   try
-    // Parse first key part
     KeyParts.Add(ParseKey);
-
-    // Parse remaining key parts (if any)
     while Match(ttDot) do
       KeyParts.Add(ParseKey);
 
-    // Build composite key with dots as markers
-    // The dots indicate this is a dotted key that needs nested table creation
     if KeyParts.Count = 1 then
-      FullKey := KeyParts[0]  // Simple key
+      FullKey := KeyParts[0]
     else
     begin
-      // Dotted key - join with dots
+      // Join with #31, NOT with '.', so "tt.com" stays as one segment
       FullKey := KeyParts[0];
       for i := 1 to KeyParts.Count - 1 do
-        FullKey := FullKey + '.' + KeyParts[i];
+        FullKey := FullKey + #31 + KeyParts[i];
     end;
 
     Expect(ttEqual);
     Value := ParseValue;
 
-    // Return the key-value pair
-    // The Parse method will check for dots and create nested structure
     Result := TTOMLKeyValuePair.Create(FullKey, Value);
   finally
     KeyParts.Free;
@@ -1627,6 +1643,8 @@ function TTOMLParser.Parse: TTOMLTable;
 var
   CurrentTable: TTOMLTable;
   TablePath: TStringList;
+  DefinedTables: TStringList;   // tracks explicitly defined [table] headers
+  DefinedArrays: TStringList;   // tracks explicitly defined [[array]] headers
   i: Integer;
   Key: string;
   Value: TTOMLValue;
@@ -1634,11 +1652,28 @@ var
   IsArrayOfTables: Boolean;
   ArrayValue: TTOMLArray;
   NewTable: TTOMLTable;
+  HeaderKey: string;            // canonical dotted path of current [header]
+
+  function TablePathToKey: string;
+  var j: Integer;
+  begin
+    Result := '';
+    for j := 0 to TablePath.Count - 1 do
+    begin
+      if j > 0 then Result := Result + #31;
+      Result := Result + TablePath[j];
+    end;
+  end;
+
 begin
   Result := TTOMLTable.Create;
   try
     CurrentTable := Result;
-    TablePath := TStringList.Create;
+    TablePath    := TStringList.Create;
+    DefinedTables := TStringList.Create;
+    DefinedArrays := TStringList.Create;
+    DefinedTables.Sorted  := True;
+    DefinedArrays.Sorted  := True;
     try
       while FCurrentToken.TokenType <> ttEOF do
       begin
@@ -1663,6 +1698,32 @@ begin
               Expect(ttRBracket);
               if IsArrayOfTables then
                 Expect(ttRBracket);
+
+              // Build canonical header key for duplicate detection
+              HeaderKey := TablePathToKey;
+
+              if IsArrayOfTables then
+              begin
+                // [[key]] must not clash with a previously defined [key] table header
+                if DefinedTables.IndexOf(HeaderKey) >= 0 then
+                  raise ETOMLParserException.CreateFmt(
+                    'Cannot define [[%s]] — already defined as a regular table at line %d, column %d',
+                    [TablePath.CommaText, FCurrentToken.Line, FCurrentToken.Column]);
+                DefinedArrays.Add(HeaderKey);
+              end
+              else
+              begin
+                // [key] must not be defined twice, and must not clash with [[key]]
+                if DefinedTables.IndexOf(HeaderKey) >= 0 then
+                  raise ETOMLParserException.CreateFmt(
+                    'Duplicate table header [%s] at line %d, column %d',
+                    [TablePath.CommaText, FCurrentToken.Line, FCurrentToken.Column]);
+                if DefinedArrays.IndexOf(HeaderKey) >= 0 then
+                  raise ETOMLParserException.CreateFmt(
+                    'Cannot define [%s] — already defined as an array of tables at line %d, column %d',
+                    [TablePath.CommaText, FCurrentToken.Line, FCurrentToken.Column]);
+                DefinedTables.Add(HeaderKey);
+              end;
 
             // Navigate to the correct table
               CurrentTable := Result;
@@ -1744,11 +1805,11 @@ begin
                 KeyPair := ParseKeyValue;
 
                 try
-        // 检查是否是点分隔键
-                  if Pos('.', KeyPair.Key) > 0 then
+        // 检查是否是点分隔键（用 #31 分隔符判断，由 ParseKeyValue 打包）
+                  if Pos(#31, KeyPair.Key) > 0 then
                   begin
                     var KeyParts: TArray<string>;
-                    KeyParts := SplitDottedKey(KeyPair.Key);
+                    KeyParts := KeyPair.Key.Split([#31]);
                     SetDottedKey(CurrentTable, KeyParts, KeyPair.Value);
                   end
                   else
@@ -1778,6 +1839,8 @@ begin
       end;
     finally
       TablePath.Free;
+      DefinedTables.Free;
+      DefinedArrays.Free;
     end;
   except
     Result.Free;
