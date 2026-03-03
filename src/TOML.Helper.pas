@@ -301,25 +301,73 @@ end;
 
 { ===== Helper Functions ===== }
 
+//function SplitPath(const Path: string): TArray<string>;
+//var
+//  Parts: TStringList;
+//  i: Integer;
+//begin
+//  Parts := TStringList.Create;
+//  try
+//    Parts.Delimiter := '.';
+//    Parts.StrictDelimiter := True;
+//    Parts.DelimitedText := Path;
+//
+//    SetLength(Result, Parts.Count);
+//    for i := 0 to Parts.Count - 1 do
+//      Result[i] := Trim(Parts[i]);
+//  finally
+//    Parts.Free;
+//  end;
+//end;
+
 function SplitPath(const Path: string): TArray<string>;
 var
-  Parts: TStringList;
+  Parts: TList<string>;
+  Current: string;
   i: Integer;
+  InBasic, InLiteral: Boolean;
+  Ch: Char;
 begin
-  Parts := TStringList.Create;
+  // Splits a dotted key path respecting quoted segments.
+  // Quote characters are used as delimiters only — they are NOT included in output.
+  //   site."tt.com".owner  ->  ["site", "tt.com", "owner"]
+  //   'a'."b.c"            ->  ["a", "b.c"]
+  Parts := TList<string>.Create;
   try
-    Parts.Delimiter := '.';
-    Parts.StrictDelimiter := True;
-    Parts.DelimitedText := Path;
+    Current := '';
+    InBasic   := False;
+    InLiteral := False;
+
+    for i := 1 to Length(Path) do
+    begin
+      Ch := Path[i];
+      if (Ch = '"') and not InLiteral then
+      begin
+        InBasic := not InBasic;
+        Continue; // do NOT add quote char to Current
+      end;
+      if (Ch = '''') and not InBasic then
+      begin
+        InLiteral := not InLiteral;
+        Continue; // do NOT add quote char to Current
+      end;
+      if (Ch = '.') and not InBasic and not InLiteral then
+      begin
+        Parts.Add(Trim(Current));
+        Current := '';
+        Continue;
+      end;
+      Current := Current + Ch;
+    end;
+    Parts.Add(Trim(Current));
 
     SetLength(Result, Parts.Count);
     for i := 0 to Parts.Count - 1 do
-      Result[i] := Trim(Parts[i]);
+      Result[i] := Parts[i];
   finally
     Parts.Free;
   end;
 end;
-
 function NavigateToTable(Root: TTOMLTable; const Path: string): TTOMLTable;
 var
   Parts: TArray<string>;
@@ -366,42 +414,113 @@ begin
   end;
 end;
 
+//function GetValueFromPath(Root: TTOMLTable; const Path: string): TTOMLValue;
+//var
+//  Parts: TArray<string>;
+//  CurrentTable: TTOMLTable;
+//  LastKey: string;
+//  ParentPath: string;
+//  CleanKey: string;
+//  i: Integer;
+//begin
+//  Result := nil;
+//
+//  if not Assigned(Root) or (Path = '') then
+//    Exit;
+//
+//  try
+//    if (Length(Path) >= 2) and (Path[1] = '"') and (Path[Length(Path)] = '"') then
+//    begin
+//      CleanKey := Copy(Path, 2, Length(Path) - 2);
+//      Root.TryGetValue(CleanKey, Result);
+//      Exit;
+//    end;
+//
+//    Parts := SplitPath(Path);
+//    if Length(Parts) = 1 then
+//    begin
+//      Root.TryGetValue(Path, Result);
+//    end
+//    else
+//    begin
+//      LastKey := Parts[High(Parts)];
+//      ParentPath := Parts[0];
+//      for i := 1 to High(Parts) - 1 do
+//        ParentPath := ParentPath + '.' + Parts[i];
+//      CurrentTable := NavigateToTable(Root, ParentPath);
+//      if Assigned(CurrentTable) then
+//        CurrentTable.TryGetValue(LastKey, Result);
+//    end;
+//  except
+//    Result := nil;
+//  end;
+//end;
+
 function GetValueFromPath(Root: TTOMLTable; const Path: string): TTOMLValue;
 var
   Parts: TArray<string>;
   CurrentTable: TTOMLTable;
-  LastKey: string;
-  ParentPath: string;
-  CleanKey: string;
   i: Integer;
+  Val: TTOMLValue;
+  CleanKey: string;
 begin
   Result := nil;
+  if not Assigned(Root) or (Path = '') then Exit;
 
-  if not Assigned(Root) or (Path = '') then
-    Exit;
+  // --- 你的预处理逻辑：处理 "www.google.com" 这种整个是引号的情况 ---
+  if (Length(Path) >= 2) and
+     (((Path[1] = '"') and (Path[Length(Path)] = '"')) or
+      ((Path[1] = '''') and (Path[Length(Path)] = ''''))) then
+  begin
+    CleanKey := Copy(Path, 2, Length(Path) - 2);
+    if Root.TryGetValue(CleanKey, Result) then
+      Exit;
+    // 如果直接查找失败，继续向下尝试路径拆分（以防是 "a.b".c 这种不标准但存在的形式）
+  end;
 
   try
-    if (Length(Path) >= 2) and (Path[1] = '"') and (Path[Length(Path)] = '"') then
-    begin
-      CleanKey := Copy(Path, 2, Length(Path) - 2);
-      Root.TryGetValue(CleanKey, Result);
-      Exit;
-    end;
-
     Parts := SplitPath(Path);
-    if Length(Parts) = 1 then
+    if Length(Parts) = 0 then Exit;
+
+    CurrentTable := Root;
+    for i := 0 to High(Parts) do
     begin
-      Root.TryGetValue(Path, Result);
-    end
-    else
-    begin
-      LastKey := Parts[High(Parts)];
-      ParentPath := Parts[0];
-      for i := 1 to High(Parts) - 1 do
-        ParentPath := ParentPath + '.' + Parts[i];
-      CurrentTable := NavigateToTable(Root, ParentPath);
-      if Assigned(CurrentTable) then
-        CurrentTable.TryGetValue(LastKey, Result);
+      CleanKey := Parts[i];
+      // 对每一段路径进行脱钩处理 (site."google.com".url -> google.com)
+      if (Length(CleanKey) >= 2) and
+         (((CleanKey[1] = '"') and (CleanKey[Length(CleanKey)] = '"')) or
+          ((CleanKey[1] = '''') and (CleanKey[Length(CleanKey)] = ''''))) then
+      begin
+        CleanKey := Copy(CleanKey, 2, Length(CleanKey) - 2);
+      end;
+
+      if not CurrentTable.TryGetValue(CleanKey, Val) then
+      begin
+        Result := nil;
+        Exit;
+      end;
+
+      // 如果是最后一部分，赋值并返回
+      if i = High(Parts) then
+      begin
+        Result := Val;
+        Exit;
+      end;
+
+      // 如果中间层级是表，继续导航
+      if Val is TTOMLTable then
+        CurrentTable := TTOMLTable(Val)
+      // 如果中间层级是数组，按库惯例指向最后一个表
+      else if (Val is TTOMLArray) and (TTOMLArray(Val).Count > 0) then
+      begin
+        Val := TTOMLArray(Val).GetItem(TTOMLArray(Val).Count - 1);
+        if Val is TTOMLTable then
+          CurrentTable := TTOMLTable(Val)
+        else
+          Exit;
+      end
+      else
+        Exit;
     end;
   except
     Result := nil;
@@ -703,33 +822,68 @@ end;
 
 { ===== TTOMLTableHelper - Writing Methods with Overwrite Control ===== }
 
+// Navigate/create nested tables along Parts[0..High-1], then write
+// Parts[High] = NewValue in the leaf table.
+// Returns True on success.  On failure NewValue is NOT freed here.
+function SetValueAtPath(Root: TTOMLTable; const Parts: TArray<string>;
+  NewValue: TTOMLValue; Overwrite: Boolean): Boolean;
+var
+  CurrentTable: TTOMLTable;
+  ExistingValue: TTOMLValue;
+  NewTable: TTOMLTable;
+  LastKey: string;
+  i: Integer;
+begin
+  Result := False;
+  if (Length(Parts) = 0) or not Assigned(Root) then Exit;
+
+  CurrentTable := Root;
+  for i := 0 to High(Parts) - 1 do
+  begin
+    if CurrentTable.Items.TryGetValue(Parts[i], ExistingValue) then
+    begin
+      if ExistingValue is TTOMLTable then
+        CurrentTable := TTOMLTable(ExistingValue)
+      else if (ExistingValue is TTOMLArray) and
+              (TTOMLArray(ExistingValue).Count > 0) and
+              (TTOMLArray(ExistingValue).GetItem(
+                TTOMLArray(ExistingValue).Count - 1) is TTOMLTable) then
+        CurrentTable := TTOMLTable(TTOMLArray(ExistingValue).GetItem(
+                          TTOMLArray(ExistingValue).Count - 1))
+      else
+        Exit; // non-table value blocks path navigation
+    end
+    else
+    begin
+      NewTable := TTOMLTable.Create;
+      try
+        CurrentTable.Items.AddOrSetValue(Parts[i], NewTable);
+      except
+        NewTable.Free;
+        Exit;
+      end;
+      CurrentTable := NewTable;
+    end;
+  end;
+
+  LastKey := Parts[High(Parts)];
+  if CurrentTable.Items.TryGetValue(LastKey, ExistingValue) then
+  begin
+    if not Overwrite then Exit(False);
+    ExistingValue.Free;
+  end;
+  CurrentTable.Items.AddOrSetValue(LastKey, NewValue);
+  Result := True;
+end;
+
 function TTOMLTableHelper.SetStr(const Key: string; const Value: string; Overwrite: Boolean): Boolean;
 var
-  OldValue: TTOMLValue;
   NewValue: TTOMLString;
 begin
-//  Result := False;
-
   try
-    // Check if key exists
-    if Self.Items.TryGetValue(Key, OldValue) then
-    begin
-      if not Overwrite then
-        Exit(False);
-
-      // Free old value before replacing
-      OldValue.Free;
-    end;
-
-    // Create new value
     NewValue := TTOMLString.Create(Value);
-    try
-      Self.Items.AddOrSetValue(Key, NewValue);
-      Result := True;
-    except
-      NewValue.Free;
-      raise;
-    end;
+    Result := SetValueAtPath(Self, SplitPath(Key), NewValue, Overwrite);
+    if not Result then NewValue.Free;
   except
     Result := False;
   end;
@@ -737,27 +891,12 @@ end;
 
 function TTOMLTableHelper.SetInt(const Key: string; const Value: Int64; Overwrite: Boolean): Boolean;
 var
-  OldValue: TTOMLValue;
   NewValue: TTOMLInteger;
 begin
-//  Result := False;
-
   try
-    if Self.Items.TryGetValue(Key, OldValue) then
-    begin
-      if not Overwrite then
-        Exit(False);
-      OldValue.Free;
-    end;
-
     NewValue := TTOMLInteger.Create(Value);
-    try
-      Self.Items.AddOrSetValue(Key, NewValue);
-      Result := True;
-    except
-      NewValue.Free;
-      raise;
-    end;
+    Result := SetValueAtPath(Self, SplitPath(Key), NewValue, Overwrite);
+    if not Result then NewValue.Free;
   except
     Result := False;
   end;
@@ -765,27 +904,12 @@ end;
 
 function TTOMLTableHelper.SetFloat(const Key: string; const Value: Double; Overwrite: Boolean): Boolean;
 var
-  OldValue: TTOMLValue;
   NewValue: TTOMLFloat;
 begin
-//  Result := False;
-
   try
-    if Self.Items.TryGetValue(Key, OldValue) then
-    begin
-      if not Overwrite then
-        Exit(False);
-      OldValue.Free;
-    end;
-
     NewValue := TTOMLFloat.Create(Value);
-    try
-      Self.Items.AddOrSetValue(Key, NewValue);
-      Result := True;
-    except
-      NewValue.Free;
-      raise;
-    end;
+    Result := SetValueAtPath(Self, SplitPath(Key), NewValue, Overwrite);
+    if not Result then NewValue.Free;
   except
     Result := False;
   end;
@@ -793,27 +917,12 @@ end;
 
 function TTOMLTableHelper.SetBool(const Key: string; const Value: Boolean; Overwrite: Boolean): Boolean;
 var
-  OldValue: TTOMLValue;
   NewValue: TTOMLBoolean;
 begin
-//  Result := False;
-
   try
-    if Self.Items.TryGetValue(Key, OldValue) then
-    begin
-      if not Overwrite then
-        Exit(False);
-      OldValue.Free;
-    end;
-
     NewValue := TTOMLBoolean.Create(Value);
-    try
-      Self.Items.AddOrSetValue(Key, NewValue);
-      Result := True;
-    except
-      NewValue.Free;
-      raise;
-    end;
+    Result := SetValueAtPath(Self, SplitPath(Key), NewValue, Overwrite);
+    if not Result then NewValue.Free;
   except
     Result := False;
   end;
@@ -821,80 +930,36 @@ end;
 
 function TTOMLTableHelper.SetDateTime(const Key: string; const Value: TDateTime; Overwrite: Boolean): Boolean;
 var
-  OldValue: TTOMLValue;
   NewValue: TTOMLDateTime;
 begin
-//  Result := False;
-
   try
-    if Self.Items.TryGetValue(Key, OldValue) then
-    begin
-      if not Overwrite then
-        Exit(False);
-      OldValue.Free;
-    end;
-
     NewValue := TTOMLDateTime.Create(Value);
-    try
-      Self.Items.AddOrSetValue(Key, NewValue);
-      Result := True;
-    except
-      NewValue.Free;
-      raise;
-    end;
+    Result := SetValueAtPath(Self, SplitPath(Key), NewValue, Overwrite);
+    if not Result then NewValue.Free;
   except
     Result := False;
   end;
 end;
 
-{ Set array value with overwrite control
-  @param Value Array object
-  @returns True if value was set, False if key exists and Overwrite=False
-  @note Ownership transfers only on success (Result=True)
-  @note If returns False, caller retains ownership and must manage Value }
 function TTOMLTableHelper.SetArray(const Key: string; Value: TTOMLArray; Overwrite: Boolean): Boolean;
-var
-  OldValue: TTOMLValue;
 begin
   Result := False;
-
-  if not Assigned(Value) then
-    Exit;
-
+  if not Assigned(Value) then Exit;
   try
-    if Self.Items.TryGetValue(Key, OldValue) then
-    begin
-      if not Overwrite then
-        Exit(False);
-      OldValue.Free;
-    end;
-
-    Self.Items.AddOrSetValue(Key, Value);
-    Result := True;
+    Result := SetValueAtPath(Self, SplitPath(Key), Value, Overwrite);
+    // Do NOT free Value on failure — caller retains ownership
   except
     Result := False;
   end;
 end;
 
 function TTOMLTableHelper.SetTable(const Key: string; Value: TTOMLTable; Overwrite: Boolean): Boolean;
-var
-  OldValue: TTOMLValue;
 begin
   Result := False;
-
-  if not Assigned(Value) then
-    Exit;
-
+  if not Assigned(Value) then Exit;
   try
-    if Self.Items.TryGetValue(Key, OldValue) then
-    begin
-      if not Overwrite then
-        Exit(False);
-      OldValue.Free;
-    end;
-
-    Self.Items.AddOrSetValue(Key, Value);
-    Result := True;
+    Result := SetValueAtPath(Self, SplitPath(Key), Value, Overwrite);
+    // Do NOT free Value on failure — caller retains ownership
   except
     Result := False;
   end;
