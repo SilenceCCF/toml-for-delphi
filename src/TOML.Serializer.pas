@@ -42,7 +42,7 @@ type
     FStringBuilder: TStringBuilder;  // StringBuilder for efficient string building
     FIndentLevel: Integer;           // Current indentation level
     FCurrentPath: TStringList;       // Tracks current table path for proper nesting
-    FFormatSettings: TFormatSettings; // 1. 增加格式设置字段
+    FFormatSettings: TFormatSettings; // Add formatting field
     { Writes indentation at current level
       Used to maintain consistent formatting }
     procedure WriteIndent;
@@ -87,6 +87,7 @@ type
       @param AKey The key to check
       @returns True if key needs quoting, False otherwise }
     function BuildTablePath(const NewKey: string): string;
+//    function SplitDottedKey(const CompositeKey: string): TArray<string>;
     function NeedsQuoting(const AKey: string): Boolean;
   public
     { Creates a new TOML serializer instance }
@@ -171,11 +172,10 @@ begin
   FCurrentPath := TStringList.Create;
   FCurrentPath.Delimiter := '.';      // Set delimiter for path joining
   FCurrentPath.StrictDelimiter := True; // Use strict delimiter handling
-  // 2. 初始化为不变量格式设置（确保点号作为小数点，冒号作为时间分隔符）
   {$IF CompilerVersion >= 22.0} // XE 及以上版本
   FFormatSettings := TFormatSettings.Invariant;
   {$ELSE}
-  // 兼容旧版本 Delphi (D2009/D2010)
+  // for Delphi 2009/2010
   GetLocaleFormatSettings(LOCALE_USER_DEFAULT, FFormatSettings);
   FFormatSettings.DecimalSeparator := '.';
   FFormatSettings.ThousandSeparator := #0;
@@ -261,6 +261,63 @@ begin
   end;
 end;
 
+//function TTOMLSerializer.SplitDottedKey(const CompositeKey: string): TArray<string>;
+//var
+//  Parts: TList<string>;
+//  CurrentPart: string;
+//  i: Integer;
+//  InQuotes: Boolean;
+//  Ch: Char;
+//begin
+//  Parts := TList<string>.Create;
+//  try
+//    CurrentPart := '';
+//    InQuotes := False;
+//
+//    i := 1;
+//    while i <= Length(CompositeKey) do
+//    begin
+//      Ch := CompositeKey[i];
+//
+//      if Ch = '"' then
+//      begin
+//        // Toggle the quotes. Key point: Do not add the quotes themselves.
+//        InQuotes := not InQuotes;
+//        Inc(i);
+//        Continue;
+//      end;
+//
+//      if (Ch = '.') and (not InQuotes) then
+//      begin
+//        // Only the period outside the quotation marks is a separator.
+//        if CurrentPart <> '' then
+//        begin
+//          Parts.Add(CurrentPart);
+//          CurrentPart := '';
+//        end;
+//      end
+//      else
+//      begin
+//        // Ordinary characters or dots within quotation marks
+//        CurrentPart := CurrentPart + Ch;
+//      end;
+//
+//      Inc(i);
+//    end;
+//
+//    // Add the last part
+//    if CurrentPart <> '' then
+//      Parts.Add(CurrentPart);
+//
+//    // Convert to array
+//    SetLength(Result, Parts.Count);
+//    for i := 0 to Parts.Count - 1 do
+//      Result[i] := Parts[i];
+//  finally
+//    Parts.Free;
+//  end;
+//end;
+
 function TTOMLSerializer.NeedsQuoting(const AKey: string): Boolean;
 var
   i: Integer;
@@ -331,15 +388,103 @@ end;
 
 procedure TTOMLSerializer.WriteDateTime(const ADateTimeValue: TTOMLValue);
 var
-  DTObj: TTOMLDateTime;
+  DateTimeVal: TTOMLDateTime;
+  Str: string;
+  Hours, Minutes: Integer;
+  Sign: Char;
 begin
-  DTObj := ADateTimeValue as TTOMLDateTime;
-  if DTObj.RawString <> '' then
-    FStringBuilder.Append(DTObj.RawString)
-  else
-//    FStringBuilder.Append(FormatDateTime('yyyy-mm-dd"T"hh:nn:ss.zzz"Z"', DTObj.Value));
-    // 3. 使用 FFormatSettings 确保时间格式化不受本地化影响
-    FStringBuilder.Append(FormatDateTime('yyyy-mm-dd"T"hh:nn:ss.zzz"Z"', DTObj.Value, FFormatSettings));
+  if not (ADateTimeValue is TTOMLDateTime) then
+    raise ETOMLSerializerException.Create('Invalid datetime value type');
+
+  DateTimeVal := TTOMLDateTime(ADateTimeValue);
+
+  // If we have the original raw string, use it to preserve exact format
+  // This ensures we maintain the exact representation from the source
+  if DateTimeVal.RawString <> '' then
+  begin
+    FStringBuilder.Append(DateTimeVal.RawString);
+    Exit;
+  end;
+
+  // Otherwise, format according to the datetime kind
+  case DateTimeVal.Kind of
+    tdkLocalDate:
+      // Local Date: 1979-05-27
+      Str := FormatDateTime('yyyy-mm-dd', DateTimeVal.Value);
+
+    tdkLocalTime:
+      begin
+        // Local Time: 07:32:00 or 07:32:00.999999
+        Str := FormatDateTime('hh:nn:ss', DateTimeVal.Value);
+
+        // Add fractional seconds if present
+        var FracSec: Double := Frac(DateTimeVal.Value) * 24 * 3600;
+        var Sec: Integer := Trunc(FracSec);
+        var Frac: Double := FracSec - Sec;
+        if Frac > 0.0 then
+        begin
+          var FracStr: string := FloatToStrF(Frac, ffFixed, 15, 6, FFormatSettings);
+          // Remove leading "0."
+          if (Length(FracStr) > 2) and (FracStr[1] = '0') and (FracStr[2] = '.') then
+            Delete(FracStr, 1, 1);
+          Str := Str + FracStr;
+        end;
+      end;
+
+    tdkLocalDateTime:
+      begin
+        // Local Date-Time: 1979-05-27T07:32:00 or 1979-05-27T07:32:00.999999
+        Str := FormatDateTime('yyyy-mm-dd"T"hh:nn:ss', DateTimeVal.Value);
+
+        // Add fractional seconds if present
+        var FracSec: Double := Frac(DateTimeVal.Value) * 24 * 3600;
+        var Sec: Integer := Trunc(FracSec);
+        var Frac: Double := FracSec - Sec;
+        if Frac > 0.0 then
+        begin
+          var FracStr: string := FloatToStrF(Frac, ffFixed, 15, 6, FFormatSettings);
+          // Remove leading "0."
+          if (Length(FracStr) > 2) and (FracStr[1] = '0') and (FracStr[2] = '.') then
+            Delete(FracStr, 1, 1);
+          Str := Str + FracStr;
+        end;
+      end;
+
+    tdkOffsetDateTime:
+      begin
+        // Offset Date-Time: 1979-05-27T07:32:00Z or 1979-05-27T00:32:00-07:00
+        Str := FormatDateTime('yyyy-mm-dd"T"hh:nn:ss', DateTimeVal.Value);
+
+        // Add fractional seconds if present
+        var FracSec: Double := Frac(DateTimeVal.Value) * 24 * 3600;
+        var Sec: Integer := Trunc(FracSec);
+        var Frac: Double := FracSec - Sec;
+        if Frac > 0.0 then
+        begin
+          var FracStr: string := FloatToStrF(Frac, ffFixed, 15, 6, FFormatSettings);
+          // Remove leading "0."
+          if (Length(FracStr) > 2) and (FracStr[1] = '0') and (FracStr[2] = '.') then
+            Delete(FracStr, 1, 1);
+          Str := Str + FracStr;
+        end;
+
+        // Add timezone offset
+        if DateTimeVal.TimeZoneOffset = 0 then
+          Str := Str + 'Z'
+        else
+        begin
+          Hours := Abs(DateTimeVal.TimeZoneOffset) div 60;
+          Minutes := Abs(DateTimeVal.TimeZoneOffset) mod 60;
+          if DateTimeVal.TimeZoneOffset < 0 then
+            Sign := '-'
+          else
+            Sign := '+';
+          Str := Str + Format('%s%.2d:%.2d', [Sign, Hours, Minutes]);
+        end;
+      end;
+  end;
+
+  FStringBuilder.Append(Str);
 end;
 
 //procedure TTOMLSerializer.WriteDateTime(const ADateTime: TDateTime);
@@ -395,25 +540,59 @@ begin
     tvtInteger:
       FStringBuilder.Append(IntToStr(AValue.AsInteger));
 
-    tvtFloat:
+tvtFloat:
+  begin
+    var F: Double := AValue.AsFloat;
+    var S: string;
+
+    // Handle special float values first
+    if IsNan(F) then
+    begin
+      // TOML supports nan, +nan, -nan
+      // We use 'nan' as the standard representation
+      S := 'nan';
+    end
+    else if IsInfinite(F) then
+    begin
+      // Handle positive and negative infinity
+      if F > 0 then
+        S := 'inf'
+      else
+        S := '-inf';
+    end
+    else
+    begin
+      // Regular float value
+      // Use FloatToStrF with sufficient precision for round-trip conversion
+      // 15 significant digits is enough for IEEE 754 double precision
+      S := FloatToStrF(F, ffGeneral, 15, 0, FFormatSettings);
+
+      // TOML requires that float literals contain a decimal point or exponent
+      // to distinguish them from integers
+      if (Pos('.', S) = 0) and (Pos('e', LowerCase(S)) = 0) and (Pos('E', S) = 0) then
       begin
-        var F: Double := AValue.AsFloat;
-        var S: string;
-        if IsNan(F) then
-          S := 'nan'
-        else if IsInfinite(F) then
+        // No decimal point or exponent found
+        // Check if the number is exactly representable as an integer
+        if (F >= Low(Int64)) and (F <= High(Int64)) and (Frac(F) = 0) then
         begin
-          if F > 0 then S := 'inf' else S := '-inf';
+          // Add .0 to make it clear it's a float
+          S := S + '.0';
         end
         else
         begin
-          S := FloatToStr(F, FFormatSettings);
-          // TOML requires a decimal point or exponent in float literals
-          if (Pos('.', S) = 0) and (Pos('e', LowerCase(S)) = 0) then
-            S := S + '.0';
+          // Use exponential notation to ensure it's recognized as float
+          S := FloatToStrF(F, ffExponent, 15, 0, FFormatSettings);
         end;
-        FStringBuilder.Append(S);
       end;
+
+      // Additional validation: ensure the string is not just an integer
+      // This handles edge cases where FloatToStrF might produce integer-like output
+      if (Pos('.', S) = 0) and (Pos('e', LowerCase(S)) = 0) and (Pos('E', S) = 0) then
+        S := S + '.0';
+    end;
+
+    FStringBuilder.Append(S);
+  end;
     tvtBoolean:
       if AValue.AsBoolean then
         FStringBuilder.Append('true')
@@ -580,11 +759,11 @@ var
 begin
   if AInline then
   begin
-    // --- 内联表部分 ---
+    // --- Inline table section ---
     FStringBuilder.Append('{');
     First := True;
 
-    // 提取并排序 Key
+    // Extract and sort the keys
     SortedKeys := TList<string>.Create;
     try
       for K in ATable.Items.Keys do SortedKeys.Add(K);
@@ -610,19 +789,19 @@ begin
   end
   else
   begin
-    // --- 标准表部分 ---
+    // --- Standard Table Section ---
     SortedKeys := TList<string>.Create;
     try
-      // 1. 获取所有 Key 并排序
+      // 1. Get all keys and sort them
       for K in ATable.Items.Keys do SortedKeys.Add(K);
       SortedKeys.Sort;
 
-      // 2. 第一轮遍历：先写入普通键值对（非表、非对象数组）
-      // 根据 TOML 规范，普通键值对必须写在任何子表之前
+      // 2. First round of traversal: Write ordinary key-value pairs (not tables, not object arrays) first.
+      // According to the TOML specification, regular key-value pairs must be written before any subtable.
       for K in SortedKeys do
       begin
         V := ATable.Items[K];
-        // 判断是否为子表或内含表的数组（这些需要放在后面写）
+        // Determine if an array is a sub-table or an array containing tables (these steps will be described later).
         if not ((V.ValueType = tvtTable) or
            ((V.ValueType = tvtArray) and (V.AsArray.Count > 0) and (V.AsArray.GetItem(0).ValueType = tvtTable))) then
         begin
@@ -633,12 +812,12 @@ begin
         end;
       end;
 
-      // 3. 第二轮遍历：写入数组表 [[key]] 和 子表 [key]
+      // 3. Second round of traversal: Write to the array table [[key]] and the sub-table [key]
       for K in SortedKeys do
       begin
         V := ATable.Items[K];
 
-        // 处理数组表 (Array of Tables)
+        // Process the array of table
         if (V.ValueType = tvtArray) and (V.AsArray.Count > 0) then
         begin
           ArrayValue := V.AsArray;
@@ -666,7 +845,7 @@ begin
           end;
         end;
 
-        // 处理常规子表 [table]
+        // Processing regular sub-tables [table]
         if V.ValueType = tvtTable then
         begin
           SubTable := V.AsTable;
@@ -694,3 +873,4 @@ begin
 end;
 
 end.
+
