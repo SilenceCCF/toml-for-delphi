@@ -11,7 +11,8 @@ uses
   TOML.Parser,
   TOML.Serializer,
   TOML.Helper,
-  Math;
+  Math,
+  Winapi.Windows;
 
 var
   TotalTests: Integer = 0;
@@ -312,12 +313,9 @@ begin
     Config.SetTable('database', Database);
 
     // Access nested values
-    Owner := Config.GetTable('owner');
-    AssertTrue('Owner table exists', Assigned(Owner));
+    AssertTrue('Owner table exists', Config.TryGetTable('owner',Owner));
     AssertEqual('Owner name', 'Tom Preston-Werner', Owner.GetStr('name'));
-
-    Database := Config.GetTable('database');
-    AssertTrue('Database table exists', Assigned(Database));
+    AssertTrue('Database table exists', Config.TryGetTable('database',Database));
     AssertEqual('Database server', '192.168.1.1', Database.GetStr('server'));
     AssertEqualInt('Database port', 5432, Database.GetInt('port'));
 
@@ -411,7 +409,7 @@ begin
 
     // Clean up
     if FileExists(FileName) then
-      DeleteFile(FileName);
+      SysUtils.DeleteFile(FileName);
   finally
     Config.Free;
   end;
@@ -724,6 +722,7 @@ end;
   ============================================================================ }
 begin
   try
+    SetConsoleOutputCP(CP_UTF8);
     Writeln;
     Writeln('═══════════════════════════════════════════════════════════');
     Writeln('  TOML Library - Complete Test Suite                       ');
@@ -784,4 +783,3 @@ begin
   Writeln('Press Enter to exit...');
   Readln;
 end.
-
