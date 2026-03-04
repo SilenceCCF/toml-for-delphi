@@ -30,6 +30,16 @@ type
     tvtTable,       // Table value type (collection of key/value pairs)
     tvtInlineTable  // Inline table value type (compact table representation)
   );
+
+  { TOML DateTime kinds - represents the four types of datetime values in TOML 1.0.0
+    These correspond to the datetime types defined in the TOML specification }
+  TTOMLDateTimeKind = (
+    tdkOffsetDateTime,    // Offset Date-Time: 1979-05-27T07:32:00Z or 1979-05-27T00:32:00-07:00
+    tdkLocalDateTime,     // Local Date-Time: 1979-05-27T07:32:00
+    tdkLocalDate,         // Local Date: 1979-05-27
+    tdkLocalTime          // Local Time: 07:32:00
+  );
+
   { Forward declarations for interdependent types }
   TTOMLValue = class;
 
@@ -131,18 +141,30 @@ type
     constructor Create(const AValue: Boolean);
     property Value: Boolean read FValue write FValue;
   end;
-  { DateTime value - represents a TOML datetime (RFC 3339 format) }
+  { DateTime value - represents a TOML datetime (RFC 3339 format)
+    Enhanced to support all four TOML datetime types }
   TTOMLDateTime = class(TTOMLValue)
   private
     FValue: TDateTime;
-    FRawString: string; // Store the original text to maintain accuracy
+    FRawString: string;           // Store the original text to maintain accuracy
+    FKind: TTOMLDateTimeKind;     // Type of datetime (offset, local datetime, local date, local time)
+    FTimeZoneOffset: Integer;     // Timezone offset in minutes (for offset datetime only)
   protected
     function GetAsDateTime: TDateTime; override;
     function GetAsString: string; override;
   public
-    constructor Create(const ADateTime: TDateTime; const ARawString: string = '');
+    { Creates a new TOML datetime value
+      @param ADateTime The TDateTime value to store
+      @param ARawString The original string representation (optional, for preserving exact format)
+      @param AKind The kind of datetime (default: offset datetime)
+      @param ATimeZoneOffset Timezone offset in minutes (default: 0 = UTC) }
+    constructor Create(const ADateTime: TDateTime; const ARawString: string = '';
+                      AKind: TTOMLDateTimeKind = tdkOffsetDateTime;
+                      ATimeZoneOffset: Integer = 0);
     property Value: TDateTime read FValue write FValue;
     property RawString: string read FRawString write FRawString;
+    property Kind: TTOMLDateTimeKind read FKind write FKind;
+    property TimeZoneOffset: Integer read FTimeZoneOffset write FTimeZoneOffset;
   end;
   { Array value - represents a TOML array (ordered list of values) }
   TTOMLArray = class(TTOMLValue)
@@ -312,17 +334,56 @@ begin
 end;
 { TTOMLDateTime }
 
-constructor TTOMLDateTime.Create(const ADateTime: TDateTime; const ARawString: string);
+constructor TTOMLDateTime.Create(const ADateTime: TDateTime; const ARawString: string;
+                                AKind: TTOMLDateTimeKind; ATimeZoneOffset: Integer);
 begin
   inherited Create(tvtDateTime);
   FValue := ADateTime;
   FRawString := ARawString;
+  FKind := AKind;
+  FTimeZoneOffset := ATimeZoneOffset;
 end;
 
 function TTOMLDateTime.GetAsString: string;
+var
+  Hours, Minutes: Integer;
+  Sign: Char;
 begin
-  if FRawString <> '' then Result := FRawString
-  else Result := FormatDateTime('yyyy-mm-dd"T"hh:nn:ss.zzz"Z"', FValue);
+  // If we have the original string, use it to preserve exact format
+  if FRawString <> '' then
+  begin
+    Result := FRawString;
+    Exit;
+  end;
+
+  // Otherwise, format according to the datetime kind
+  case FKind of
+    tdkLocalDate:
+      Result := FormatDateTime('yyyy-mm-dd', FValue);
+
+    tdkLocalTime:
+      Result := FormatDateTime('hh:nn:ss', FValue);
+
+    tdkLocalDateTime:
+      Result := FormatDateTime('yyyy-mm-dd"T"hh:nn:ss', FValue);
+
+    tdkOffsetDateTime:
+      begin
+        if FTimeZoneOffset = 0 then
+          Result := FormatDateTime('yyyy-mm-dd"T"hh:nn:ss"Z"', FValue)
+        else
+        begin
+          Hours := Abs(FTimeZoneOffset) div 60;
+          Minutes := Abs(FTimeZoneOffset) mod 60;
+          if FTimeZoneOffset < 0 then
+            Sign := '-'
+          else
+            Sign := '+';
+          Result := FormatDateTime('yyyy-mm-dd"T"hh:nn:ss', FValue) +
+                   Format('%s%.2d:%.2d', [Sign, Hours, Minutes]);
+        end;
+      end;
+  end;
 end;
 
 function TTOMLDateTime.GetAsDateTime: TDateTime;
@@ -411,5 +472,3 @@ begin
 end;
 
 end.
-
-
