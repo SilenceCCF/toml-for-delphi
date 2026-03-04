@@ -13,18 +13,12 @@
 }
 unit TOML.Parser;
 //{$mode objfpc}{$H+}{$J-}
-
 interface
-
 uses
   SysUtils, Classes, TOML.Types, Generics.Collections, TypInfo, DateUtils, Math;
-
   {$IF CompilerVersion < 20.0}
-
 function CharInSet(C: Char; const CharSet: TSysCharSet): Boolean; inline;
-
   {$IFEND}
-
 type
   { Token types used during lexical analysis
     Each token represents a meaningful unit in the TOML syntax }
@@ -47,7 +41,6 @@ type
     ttIdentifier  // Key identifier
   );
   { Token record that stores lexical token information }
-
   TToken = record
     TokenType: TTokenType;  // Type of the token
     Value: string;          // String value of the token
@@ -55,68 +48,53 @@ type
     Column: Integer;        // Column number (1-based)
   end;
   { Key-Value pair type for TOML tables }
-
   TTOMLKeyValuePair = TPair<string, TTOMLValue>;
   { Lexer class that performs lexical analysis of TOML input
     Converts raw TOML text into a sequence of tokens }
-
   TTOMLLexer = class
   private
     FInput: string;      // Input string to tokenize
     FPosition: Integer;  // Current position in input
     FLine: Integer;      // Current line number (1-based)
     FColumn: Integer;    // Current column number (1-based)
-
     { Checks if we've reached the end of input
       @returns True if at end, False otherwise }
     function IsAtEnd: Boolean;
-
     { Peeks at current character without advancing position
       @returns Current character or #0 if at end }
     function Peek: Char;
-
     { Peeks at next character without advancing position
       @returns Next character or #0 if at end }
     function PeekNext: Char;
-
     { Advances position and returns current character
       @returns Current character or #0 if at end }
     function Advance: Char;
-
     { Skips whitespace and comments in the input }
     procedure SkipWhitespace;
-
     { Scans a string token (basic or literal)
       @returns The scanned string token
       @raises ETOMLParserException if string is malformed }
     function ScanString: TToken;
-
     { Scans a number token (integer or float)
       @returns The scanned number token
       @raises ETOMLParserException if number is malformed }
     function ScanNumber: TToken;
-
     { Scans an identifier token
       @returns The scanned identifier token }
     function ScanIdentifier: TToken;
-
     { Scans a datetime token
       @returns The scanned datetime token
       @raises ETOMLParserException if datetime is malformed }
     function ScanDateTime: TToken;
-
     { Character classification helper functions }
-
     { Checks if character is a digit (0-9)
       @param C Character to check
       @returns True if digit, False otherwise }
     function IsDigit(C: Char): Boolean;
-
     { Checks if character is alphabetic (a-z, A-Z)
       @param C Character to check
       @returns True if alphabetic, False otherwise }
     function IsAlpha(C: Char): Boolean;
-
     { Checks if character is alphanumeric (a-z, A-Z, 0-9)
       @param C Character to check
       @returns True if alphanumeric, False otherwise }
@@ -125,7 +103,6 @@ type
     { Creates a new lexer instance
       @param AInput The TOML input string to tokenize }
     constructor Create(const AInput: string);
-
     { Gets the next token from input
       @returns The next token
       @raises ETOMLParserException if invalid input encountered }
@@ -133,90 +110,71 @@ type
   end;
   { Parser class that performs syntactic analysis of TOML input
     Converts tokens into TOML data structures }
-
   TTOMLParser = class
   private
     FLexer: TTOMLLexer;           // Lexer instance
     FCurrentToken: TToken;         // Current token being processed
     FPeekedToken: TToken;         // Next token (if peeked)
     FHasPeeked: Boolean;          // Whether we have a peeked token
-
     { Advances to next token }
     procedure Advance;
-
     { Peeks at next token without advancing
       @returns The next token }
     function Peek: TToken;
-
     { Checks if current token matches expected type
       @param TokenType Expected token type
       @returns True and advances if matches, False otherwise }
     function Match(TokenType: TTokenType): Boolean;
-
     { Expects current token to be of specific type
       @param TokenType Expected token type
       @raises ETOMLParserException if token doesn't match }
     procedure Expect(TokenType: TTokenType);
-
     { Parsing methods for different TOML constructs }
-
     { Parses a TOML value
       @returns The parsed value
       @raises ETOMLParserException on parse error }
     function ParseValue: TTOMLValue;
-
     { Parses a string value
       @returns The parsed string value
       @raises ETOMLParserException on parse error }
     function ParseString: TTOMLString;
-
     { Parses a number value (integer or float)
       @returns The parsed number value
       @raises ETOMLParserException on parse error }
     function ParseNumber: TTOMLValue;
-
     { Parses a boolean value
       @returns The parsed boolean value
       @raises ETOMLParserException on parse error }
     function ParseBoolean: TTOMLBoolean;
-
     { Parses a datetime value
       @returns The parsed datetime value
       @raises ETOMLParserException on parse error }
     function ParseDateTime: TTOMLDateTime;
-
     { Parses an array value
       @returns The parsed array value
       @raises ETOMLParserException on parse error }
     function ParseArray: TTOMLArray;
-
     { Parses an inline table value
       @returns The parsed table value
       @raises ETOMLParserException on parse error }
     function ParseInlineTable: TTOMLTable;
-
     { Parses a key (bare or quoted)
       @returns The parsed key string
       @raises ETOMLParserException on parse error }
     function ParseKey: string;
-
     { Split a composite key into individual parts }
     function SplitDottedKey(const CompositeKey: string): TArray<string>;
-
     { Set a value using a dotted key path, creating nested tables as needed }
     procedure SetDottedKey(RootTable: TTOMLTable; const KeyParts: TArray<string>; Value: TTOMLValue);
-
     { Parses a key-value pair
       @returns The parsed key-value pair
       @raises ETOMLParserException on parse error }
     function ParseKeyValue: TTOMLKeyValuePair;
-
   public
     { Creates a new parser instance
       @param AInput The TOML input string to parse }
     constructor Create(const AInput: string);
     destructor Destroy; override;
-
     { Parses the input and returns a TOML table
       @returns The parsed TOML table
       @raises ETOMLParserException on parse error }
@@ -227,27 +185,21 @@ type
   @param ATOML The TOML string to parse
   @returns The parsed TOML table
   @raises ETOMLParserException on parse error }
-
 function ParseTOMLString(const ATOML: string): TTOMLTable;
 { Parses a TOML file into a table
   @param AFileName The file to parse
   @returns The parsed TOML table
   @raises ETOMLParserException on parse error
   @raises EFileStreamError if file cannot be opened }
-
 function ParseTOMLFile(const AFileName: string): TTOMLTable;
-
 implementation
 { Helper functions }
-
 {$IF CompilerVersion < 20.0}
-
 function CharInSet(C: Char; const CharSet: TSysCharSet): Boolean;
 begin
   Result := C in CharSet;
 end;
 {$IFEND}
-
 function ParseTOMLString(const ATOML: string): TTOMLTable;
 var
   Parser: TTOMLParser;
@@ -259,7 +211,6 @@ begin
     Parser.Free;
   end;
 end;
-
 function ParseTOMLFile(const AFileName: string): TTOMLTable;
 var
   Stream: TFileStream;
@@ -296,7 +247,6 @@ begin
   end;
 end;
 { TTOMLLexer }
-
 constructor TTOMLLexer.Create(const AInput: string);
 begin
   inherited Create;
@@ -305,12 +255,10 @@ begin
   FLine := 1;
   FColumn := 1;
 end;
-
 function TTOMLLexer.IsAtEnd: Boolean;
 begin
   Result := FPosition > Length(FInput);
 end;
-
 function TTOMLLexer.Peek: Char;
 begin
   if IsAtEnd then
@@ -318,7 +266,6 @@ begin
   else
     Result := FInput[FPosition];
 end;
-
 function TTOMLLexer.PeekNext: Char;
 begin
   if FPosition + 1 > Length(FInput) then
@@ -326,7 +273,6 @@ begin
   else
     Result := FInput[FPosition + 1];
 end;
-
 function TTOMLLexer.Advance: Char;
 begin
   if not IsAtEnd then
@@ -343,7 +289,6 @@ begin
   else
     Result := #0;
 end;
-
 procedure TTOMLLexer.SkipWhitespace;
 begin
   while not IsAtEnd do
@@ -361,24 +306,20 @@ begin
     end;
   end;
 end;
-
 function TTOMLLexer.IsDigit(C: Char): Boolean;
 begin
 //  Result := C in ['0'..'9'];
   Result := CharInSet(C, ['0'..'9']);
 end;
-
 function TTOMLLexer.IsAlpha(C: Char): Boolean;
 begin
 //  Result := (C in ['a'..'z']) or (C in ['A'..'Z']) or (C = '_');
   Result := (CharInSet(C, ['a'..'z'])) or (CharInSet(C, ['A'..'Z'])) or (C = '_');
 end;
-
 function TTOMLLexer.IsAlphaNumeric(C: Char): Boolean;
 begin
   Result := IsAlpha(C) or IsDigit(C);
 end;
-
 function TTOMLLexer.ScanString: TToken;
 var
   QuoteChar: Char;
@@ -391,16 +332,13 @@ begin
   QuoteChar := Peek;
   IsLiteral := (QuoteChar = '''');
   IsMultiline := False;
-
   Advance; // Skip opening quote
-
   // Check for multiline string (three quotes)
   if (Peek = QuoteChar) and (PeekNext = QuoteChar) then
   begin
     IsMultiline := True;
     Advance; // Skip second quote
     Advance; // Skip third quote
-
     // Skip first newline for BOTH basic and literal strings
     if (Peek = #10) or ((Peek = #13) and (PeekNext = #10)) then
     begin
@@ -410,7 +348,6 @@ begin
         Advance;
     end;
   end;
-
   TempValue := '';
   try
     while not IsAtEnd do
@@ -432,12 +369,10 @@ begin
         Advance;
         Break;
       end;
-
       // Handle escape sequences (only in basic strings)
       if (not IsLiteral) and (Peek = '\') then
       begin
         Advance; // Skip backslash
-
         // Check for line-ending backslash in multiline strings
         if IsMultiline and ((Peek = #10) or (Peek = #13)) then
         begin
@@ -450,14 +385,11 @@ begin
           end
           else if Peek = #10 then
             Advance;
-
           // Skip whitespace on next line
           while (Peek = ' ') or (Peek = #9) do
             Advance;
-
           Continue;
         end;
-
         // Regular escape sequences
         case Peek of
           'b':
@@ -482,15 +414,12 @@ begin
               var CodePoint: Cardinal;
               var HexStr: string;
               var i: Integer;
-
               UnicodeChar := Peek;
               Advance;
-
               if UnicodeChar = 'u' then
                 HexDigits := 4
               else
                 HexDigits := 8;
-
               HexStr := '';
               for i := 1 to HexDigits do
               begin
@@ -498,13 +427,10 @@ begin
                   raise ETOMLParserException.CreateFmt('Invalid Unicode escape at line %d column %d', [FLine, FColumn]);
                 HexStr := HexStr + Advance;
               end;
-
               CodePoint := StrToInt('$' + HexStr);
-
               if (CodePoint > $10FFFF) or ((CodePoint >= $D800) and (CodePoint <= $DFFF)) then
                 raise ETOMLParserException.CreateFmt('Invalid Unicode code point at line %d column %d', [FLine,
                   FColumn]);
-
               {$IF CompilerVersion >= 20.0}
               if CodePoint <= $FFFF then
                 TempValue := TempValue + WideChar(CodePoint)
@@ -537,7 +463,6 @@ begin
                 TempValue := TempValue + Chr($80 or (CodePoint and $3F));
               end;
               {$IFEND}
-
               // Don't call Advance again - we already consumed all characters
               Continue;
             end;
@@ -574,7 +499,6 @@ begin
         TempValue := TempValue + Advance;
       end;
     end;
-
     Result.TokenType := ttString;
     Result.Value := TempValue;
     Result.Line := FLine;
@@ -590,39 +514,33 @@ begin
     end;
   end;
 end;
-
 function TTOMLLexer.ScanNumber: TToken;
 var
   IsFloat: Boolean;
   StartColumn: Integer;
   TempValue: string;
   Ch: Char;
-
   function IsHexDigit(C: Char): Boolean;
   begin
 //    Result := IsDigit(C) or (C in ['A'..'F', 'a'..'f']);
     Result := IsDigit(C) or (CharInSet(C, ['A'..'F', 'a'..'f']));
   end;
-
   function IsBinDigit(C: Char): Boolean;
   begin
 //    Result := C in ['0', '1'];
     Result := CharInSet(C, ['0', '1']);
   end;
-
   function IsOctDigit(C: Char): Boolean;
   begin
 //    Result := C in ['0'..'7'];
     Result := CharInSet(C, ['0'..'7']);
   end;
-
   function ValidateUnderscores(const NumStr: string): Boolean;
   var
     i: Integer;
     PrevWasUnderscore: Boolean;
   begin
     Result := True;
-
   // Check for leading or trailing underscore
     if (Length(NumStr) > 0) then
     begin
@@ -632,7 +550,6 @@ var
         Exit;
       end;
     end;
-
   // Check for double underscores
     PrevWasUnderscore := False;
     for i := 1 to Length(NumStr) do
@@ -650,17 +567,14 @@ var
         PrevWasUnderscore := False;
     end;
   end;
-
 begin
   IsFloat := False;
   StartColumn := FColumn;
   TempValue := '';
-
   // Handle sign
 //  if Peek in ['+', '-'] then
   if CharInSet(Peek, ['+', '-']) then
     TempValue := TempValue + Advance;
-
   // Check for special float values (inf, nan)
   if (Peek = 'i') then
   begin
@@ -704,7 +618,6 @@ begin
       end;
     end;
   end;
-
   // Check for hex, octal, or binary
   if (Peek = '0') and not IsAtEnd then
   begin
@@ -714,7 +627,6 @@ begin
     begin
       TempValue := TempValue + Advance; // '0'
       TempValue := TempValue + Advance; // 'x', 'o', or 'b'
-
       case Ch of
         'X':
           while not IsAtEnd and (IsHexDigit(Peek) or (Peek = '_')) do
@@ -722,14 +634,12 @@ begin
               TempValue := TempValue + Advance
             else
               Advance;
-
         'O':
           while not IsAtEnd and (IsOctDigit(Peek) or (Peek = '_')) do
             if Peek <> '_' then
               TempValue := TempValue + Advance
             else
               Advance;
-
         'B':
           while not IsAtEnd and (IsBinDigit(Peek) or (Peek = '_')) do
             if Peek <> '_' then
@@ -747,14 +657,12 @@ begin
       Exit;
     end;
   end;
-
   // Scan integer part
   while not IsAtEnd and (IsDigit(Peek) or (Peek = '_')) do
     if Peek <> '_' then
       TempValue := TempValue + Advance
     else
       Advance;
-
   // Reject leading zeros in decimal integers (TOML 1.0.0)
   // Valid: 0, 0.5, 0e1  — Invalid: 01, 007
   // TempValue here contains only the digits (sign and 0x/0o/0b already handled above).
@@ -769,13 +677,11 @@ begin
         'Leading zeros are not allowed in decimal integers: %s at line %d column %d',
         [TempValue, FLine, StartColumn]);
   end;
-
   // Check for decimal point
   if (Peek = '.') and IsDigit(PeekNext) then
   begin
     IsFloat := True;
     TempValue := TempValue + Advance; // Add decimal point
-
     // Scan decimal part
     while not IsAtEnd and (IsDigit(Peek) or (Peek = '_')) do
       if Peek <> '_' then
@@ -783,7 +689,6 @@ begin
       else
         Advance;
   end;
-
   // Check for exponent
 //  if Peek in ['e', 'E'] then
   if CharInSet(Peek, ['e', 'E']) then
@@ -793,14 +698,12 @@ begin
 //    if Peek in ['+', '-'] then
     if CharInSet(Peek, ['+', '-']) then
       TempValue := TempValue + Advance;
-
     while not IsAtEnd and (IsDigit(Peek) or (Peek = '_')) do
       if Peek <> '_' then
         TempValue := TempValue + Advance
       else
         Advance;
   end;
-
   if IsFloat then
     Result.TokenType := ttFloat
   else
@@ -809,22 +712,18 @@ begin
   Result.Line := FLine;
   Result.Column := StartColumn;
 end;
-
 function TTOMLLexer.ScanIdentifier: TToken;
 var
   StartColumn: Integer;
 begin
   StartColumn := FColumn;
   Result.Value := '';
-
   while not IsAtEnd and (IsAlphaNumeric(Peek) or (Peek = '-')) do
     Result.Value := Result.Value + Advance;
-
   Result.TokenType := ttIdentifier;
   Result.Line := FLine;
   Result.Column := StartColumn;
 end;
-
 function TTOMLLexer.ScanDateTime: TToken;
 var
   StartColumn, StartPos, StartLine: Integer;
@@ -832,7 +731,6 @@ var
   HasTimezone: Boolean;
   HasDate: Boolean;
   TempValue: string;
-
   function ScanDigits(Count: Integer): Boolean;
   var
     i: Integer;
@@ -848,7 +746,6 @@ var
       TempValue := TempValue + Advance;
     end;
   end;
-
 begin
   StartPos := FPosition;
   StartLine := FLine;
@@ -868,21 +765,19 @@ begin
         HasDate := True;
     end;
   end;
-
   // Try to parse time (HH:MM:SS[.fraction])
   if HasDate and ((Peek = 'T') or (Peek = ' ')) then
   begin
     var CanContinue := False;
-
     if Peek = 'T' then
     begin
-      // 'T' 总是有效的分隔符
+      // 'T' is always a valid separator.
       CanContinue := True;
     end
     else if Peek = ' ' then
     begin
-      // 空格只有在后面跟着时间格式时才有效
-      // 前瞻检查：下一个应该是 HH:MM:SS 格式
+      // Spaces are only valid when followed by a time format.
+      // Prospective check: The next one should be in HH:MM:SS format.
       var NextPos := FPosition + 1;
       if (NextPos + 7 <= Length(FInput)) then
       begin
@@ -902,7 +797,6 @@ begin
           if ScanDigits(2) then
           begin
             HasTime := True;
-
           // Optional fractional seconds
             if Peek = '.' then
             begin
@@ -925,14 +819,12 @@ begin
     if ScanDigits(2) and (Peek = ':') then
     begin
       TempValue := TempValue + Advance; // :
-
       if ScanDigits(2) and (Peek = ':') then
       begin
         TempValue := TempValue + Advance; // :
         if ScanDigits(2) then
         begin
           HasTime := True;
-
           // Optional fractional seconds
           if Peek = '.' then
           begin
@@ -944,7 +836,6 @@ begin
       end;
     end;
   end;
-
   // Try to parse timezone
   //  if HasTime and (Peek in ['Z', '+', '-']) then
   if HasTime and (CharInset(Peek, ['Z', '+', '-'])) then
@@ -969,7 +860,6 @@ begin
       end;
     end;
   end;
-
   // Determine token type based on what we found
   if HasDate and HasTime and HasTimezone then
     Result.TokenType := ttDateTime
@@ -981,12 +871,10 @@ begin
     Result.TokenType := ttDateTime
   else
     Result.TokenType := ttInteger;
-
   Result.Value := TempValue;
   Result.Line := FLine;
   Result.Column := StartColumn;
 end;
-
 function TTOMLLexer.NextToken: TToken;
 var
   SavePos: Integer;
@@ -994,7 +882,6 @@ var
   SaveCol: Integer;
 begin
   SkipWhitespace;
-
   if IsAtEnd then
   begin
     Result.TokenType := ttEOF;
@@ -1003,7 +890,6 @@ begin
     Result.Column := FColumn;
     Exit;
   end;
-
   case Peek of
     '=':
       begin
@@ -1063,10 +949,8 @@ begin
         SavePos := FPosition;
         SaveLine := FLine;
         SaveCol := FColumn;
-
       // Try to scan as DateTime first
         Result := ScanDateTime;
-
       // If not a DateTime, restore position and try as number
         if Result.TokenType <> ttDateTime then
         begin
@@ -1085,9 +969,7 @@ begin
       SavePos := FPosition;
       SaveLine := FLine;
       SaveCol := FColumn;
-
       Result := ScanIdentifier;
-
         // Check if it's a special float value
       if (Result.Value = 'inf') or (Result.Value = 'nan') then
       begin
@@ -1097,12 +979,10 @@ begin
     else
       raise ETOMLParserException.CreateFmt('Unexpected character: %s at line %d, column %d', [Peek, FLine, FColumn]);
   end;
-
   Result.Line := FLine;
   Result.Column := FColumn;
 end;
 { TTOMLParser }
-
 constructor TTOMLParser.Create(const AInput: string);
 begin
   inherited Create;
@@ -1110,13 +990,11 @@ begin
   FHasPeeked := False;
   Advance;
 end;
-
 destructor TTOMLParser.Destroy;
 begin
   FLexer.Free;
   inherited;
 end;
-
 procedure TTOMLParser.Advance;
 begin
   if FHasPeeked then
@@ -1127,7 +1005,6 @@ begin
   else
     FCurrentToken := FLexer.NextToken;
 end;
-
 function TTOMLParser.Peek: TToken;
 begin
   if not FHasPeeked then
@@ -1137,7 +1014,6 @@ begin
   end;
   Result := FPeekedToken;
 end;
-
 function TTOMLParser.Match(TokenType: TTokenType): Boolean;
 begin
   if FCurrentToken.TokenType = TokenType then
@@ -1148,7 +1024,6 @@ begin
   else
     Result := False;
 end;
-
 procedure TTOMLParser.Expect(TokenType: TTokenType);
 begin
   if FCurrentToken.TokenType <> TokenType then
@@ -1157,7 +1032,6 @@ begin
       FCurrentToken.Line, FCurrentToken.Column]);
   Advance;
 end;
-
 function TTOMLParser.ParseValue: TTOMLValue;
 begin
   case FCurrentToken.TokenType of
@@ -1192,13 +1066,11 @@ begin
       (TTokenType), Ord(FCurrentToken.TokenType)), FCurrentToken.Line, FCurrentToken.Column]);
   end;
 end;
-
 function TTOMLParser.ParseString: TTOMLString;
 begin
   Result := TTOMLString.Create(FCurrentToken.Value);
   Advance;
 end;
-
 function TTOMLParser.ParseNumber: TTOMLValue;
 var
   Value: string;
@@ -1210,7 +1082,6 @@ var
   i: Integer;
 begin
   Value := FCurrentToken.Value;
-
   // Handle special float values
   if FCurrentToken.TokenType = ttFloat then
   begin
@@ -1223,7 +1094,6 @@ begin
       else
         Inc(i);
     end;
-
     // Check for special values
     if SameText(Value, 'inf') or SameText(Value, '+inf') then
       FloatValue := 1.0 / 0.0  // Creates positive infinity
@@ -1251,11 +1121,9 @@ begin
       else
         Inc(i);
     end;
-
     IsNegative := (Value <> '') and (Value[1] = '-');
     if IsNegative then
       Delete(Value, 1, 1);
-
     if (Length(Value) >= 2) and (Value[1] = '0') then
     begin
       case UpCase(Value[2]) of
@@ -1282,7 +1150,6 @@ begin
     end
     else
       Val(Value, IntValue, Code);
-
     if Code = 0 then
     begin
       if IsNegative then
@@ -1293,34 +1160,37 @@ begin
       raise ETOMLParserException.CreateFmt('Invalid integer value: %s at line %d, column %d', [Value,
         FCurrentToken.Line, FCurrentToken.Column]);
   end;
-
   Advance;
 end;
-
 function TTOMLParser.ParseBoolean: TTOMLBoolean;
 begin
   Result := TTOMLBoolean.Create(SameText(FCurrentToken.Value, 'true'));
   Advance;
 end;
-
 function TTOMLParser.ParseDateTime: TTOMLDateTime;
 var
   DateStr: string;
   Year, Month, Day, Hour, Minute, Second: Word;
   MilliSecond: Word;
   TZHour, TZMinute: Integer;
-  TZNegative: Boolean;
+  TZOffsetMinutes: Integer;
   P: Integer;
   FracStr: string;
   DT: TDateTime;
-  HasDate, HasTime: Boolean;
+  HasDate, HasTime, HasTimezone: Boolean;
+  DateTimeKind: TTOMLDateTimeKind;
 begin
   if FCurrentToken.TokenType <> ttDateTime then
-    raise ETOMLParserException.CreateFmt('Expected DateTime but got %s at line %d, column %d', [GetEnumName(TypeInfo
-      (TTokenType), Ord(FCurrentToken.TokenType)), FCurrentToken.Line, FCurrentToken.Column]);
+    raise ETOMLParserException.CreateFmt('Expected DateTime but got %s at line %d, column %d',
+      [GetEnumName(TypeInfo(TTokenType), Ord(FCurrentToken.TokenType)),
+       FCurrentToken.Line, FCurrentToken.Column]);
+
   DateStr := FCurrentToken.Value;
   HasDate := False;
   HasTime := False;
+  HasTimezone := False;
+  TZOffsetMinutes := 0;
+
   try
     // Initialize all components to 0
     Year := 0;
@@ -1330,6 +1200,8 @@ begin
     Minute := 0;
     Second := 0;
     MilliSecond := 0;
+    TZHour := 0;
+    TZMinute := 0;
 
     P := 1;
 
@@ -1362,8 +1234,7 @@ begin
         begin
           Inc(P);
           FracStr := '';
-          //  while (P <= Length(DateStr)) and (DateStr[P] in ['0'..'9']) do
-          while (P <= Length(DateStr)) and (CharInSet(DateStr[P], ['0'..'9'])) do
+          while (P <= Length(DateStr)) and CharInSet(DateStr[P], ['0'..'9']) do
           begin
             FracStr := FracStr + DateStr[P];
             Inc(P);
@@ -1371,42 +1242,67 @@ begin
           if Length(FracStr) > 0 then
             MilliSecond := StrToInt(Copy(FracStr + '000', 1, 3));
         end;
-      end;
-    end;
-    { The following code will never be executed and is therefore obsolete.
-    else if not HasDate then
-    begin
-      // Try to parse as time only (HH:MM:SS[.fraction])
-      if (P <= Length(DateStr)) then // and (DateStr[P] = 'T') then
-      begin
-//        Inc(P);
-        if (P + 7 <= Length(DateStr)) and (DateStr[P + 2] = ':') and (DateStr[P + 5] = ':') then
-        begin
-          Hour := StrToInt(Copy(DateStr, P, 2));
-          Minute := StrToInt(Copy(DateStr, P + 3, 2));
-          Second := StrToInt(Copy(DateStr, P + 6, 2));
-          HasTime := True;
-          P := P + 8;
 
-          // Parse fractional seconds if present
-          if (P <= Length(DateStr)) and (DateStr[P] = '.') then
+        // Parse timezone offset if present (only valid with time)
+        if P <= Length(DateStr) then
+        begin
+          if DateStr[P] = 'Z' then
           begin
+            HasTimezone := True;
+            TZOffsetMinutes := 0;  // UTC
             Inc(P);
-            FracStr := '';
-            //  while (P <= Length(DateStr)) and (DateStr[P] in ['0'..'9']) do
-            while (P <= Length(DateStr)) and (CharInSet(DateStr[P], ['0'..'9'])) do
+          end
+          else if CharInSet(DateStr[P], ['+', '-']) then
+          begin
+            var IsNegative: Boolean := (DateStr[P] = '-');
+            Inc(P);
+
+            // Parse timezone hours (HH)
+            if (P + 1 <= Length(DateStr)) and
+               CharInSet(DateStr[P], ['0'..'9']) and
+               CharInSet(DateStr[P + 1], ['0'..'9']) then
             begin
-              FracStr := FracStr + DateStr[P];
-              Inc(P);
+              TZHour := StrToInt(Copy(DateStr, P, 2));
+              P := P + 2;
+
+              // Parse timezone minutes (optional :MM)
+              if (P <= Length(DateStr)) and (DateStr[P] = ':') then
+              begin
+                Inc(P);
+                if (P + 1 <= Length(DateStr)) and
+                   CharInSet(DateStr[P], ['0'..'9']) and
+                   CharInSet(DateStr[P + 1], ['0'..'9']) then
+                begin
+                  TZMinute := StrToInt(Copy(DateStr, P, 2));
+                  P := P + 2;
+                end;
+              end;
+
+              // Calculate total offset in minutes
+              TZOffsetMinutes := TZHour * 60 + TZMinute;
+              if IsNegative then
+                TZOffsetMinutes := -TZOffsetMinutes;
+              HasTimezone := True;
             end;
-            if Length(FracStr) > 0 then
-              MilliSecond := StrToInt(Copy(FracStr + '000', 1, 3));
           end;
         end;
       end;
     end;
-    }
-    // Create DateTime value
+
+    // Determine the datetime kind based on what was parsed
+    if HasDate and HasTime and HasTimezone then
+      DateTimeKind := tdkOffsetDateTime
+    else if HasDate and HasTime then
+      DateTimeKind := tdkLocalDateTime
+    else if HasDate then
+      DateTimeKind := tdkLocalDate
+    else if HasTime then
+      DateTimeKind := tdkLocalTime
+    else
+      raise ETOMLParserException.CreateFmt('Invalid datetime format: %s at line %d, column %d',
+        [DateStr, FCurrentToken.Line, FCurrentToken.Column]);
+
+    // Create TDateTime value
     if HasDate then
       DT := EncodeDate(Year, Month, Day)
     else
@@ -1415,20 +1311,17 @@ begin
     if HasTime then
       DT := DT + EncodeTime(Hour, Minute, Second, MilliSecond);
 
-    if not (HasDate or HasTime) then
-      raise ETOMLParserException.CreateFmt('Invalid datetime format: %s at line %d, column %d', [DateStr,
-        FCurrentToken.Line, FCurrentToken.Column]);
-    Result := TTOMLDateTime.Create(DT, DateStr);
-//    Result := TTOMLDateTime.Create(DT);
+    // Create the TOML DateTime object with all parsed information
+    Result := TTOMLDateTime.Create(DT, DateStr, DateTimeKind, TZOffsetMinutes);
+
   except
     on E: Exception do
-      raise ETOMLParserException.CreateFmt('Error parsing datetime: %s at line %d, column %d', [E.Message,
-        FCurrentToken.Line, FCurrentToken.Column]);
+      raise ETOMLParserException.CreateFmt('Error parsing datetime: %s at line %d, column %d',
+        [E.Message, FCurrentToken.Line, FCurrentToken.Column]);
   end;
 
   Advance;
 end;
-
 function TTOMLParser.ParseArray: TTOMLArray;
 var
   ItemValue: TTOMLValue;
@@ -1436,46 +1329,38 @@ begin
   Result := TTOMLArray.Create;
   try
     Expect(ttLBracket);
-
     if FCurrentToken.TokenType <> ttRBracket then
     begin
       repeat
         // Skip any newlines between array elements
         while FCurrentToken.TokenType = ttNewLine do
           Advance;
-
         // Check for trailing comma: comma was consumed but only whitespace/newline follows
         if FCurrentToken.TokenType = ttRBracket then
           raise ETOMLParserException.CreateFmt(
             'Trailing comma is not allowed in arrays at line %d, column %d',
             [FCurrentToken.Line, FCurrentToken.Column]);
-
         ItemValue := ParseValue;
         Result.Add(ItemValue);
-
         // Skip any newlines after value, before comma or closing bracket
         while FCurrentToken.TokenType = ttNewLine do
           Advance;
       until not Match(ttComma);
-
       // Skip any newlines before closing bracket
       while FCurrentToken.TokenType = ttNewLine do
         Advance;
     end;
-
     Expect(ttRBracket);
   except
     Result.Free;
     raise;
   end;
 end;
-
 function TTOMLParser.ParseInlineTable: TTOMLTable;
 begin
   Result := TTOMLTable.Create;
   try
     Expect(ttLBrace);
-
     if FCurrentToken.TokenType <> ttRBrace then
     begin
       repeat
@@ -1487,7 +1372,6 @@ begin
         with ParseKeyValue do
           Result.Add(Key, Value);
       until not Match(ttComma);
-
       // Check for trailing comma
       if FCurrentToken.TokenType = ttRBrace then
         // fine — loop exited because next token is }  (no trailing comma consumed)
@@ -1496,14 +1380,12 @@ begin
           'Newlines are not allowed inside inline tables at line %d, column %d',
           [FCurrentToken.Line, FCurrentToken.Column]);
     end;
-
     Expect(ttRBrace);
   except
     Result.Free;
     raise;
   end;
 end;
-
 function TTOMLParser.ParseKey: string;
 begin
   if FCurrentToken.TokenType = ttString then
@@ -1520,7 +1402,6 @@ begin
     raise ETOMLParserException.CreateFmt('Expected string or identifier but got %s at line %d, column %d', [GetEnumName
       (TypeInfo(TTokenType), Ord(FCurrentToken.TokenType)), FCurrentToken.Line, FCurrentToken.Column]);
 end;
-
 function TTOMLParser.SplitDottedKey(const CompositeKey: string): TArray<string>;
 begin
   // ParseKeyValue now packs key segments with #31 (ASCII Unit Separator) as
@@ -1535,13 +1416,17 @@ begin
   end;
 end;
 
-procedure TTOMLParser.SetDottedKey(RootTable: TTOMLTable; const KeyParts: TArray<string>; Value: TTOMLValue);
+
+procedure TTOMLParser.SetDottedKey(RootTable: TTOMLTable;
+                                   const KeyParts: TArray<string>;
+                                   Value: TTOMLValue);
 var
   CurrentTable: TTOMLTable;
   ExistingValue: TTOMLValue;
   i: Integer;
   LastKey: string;
   NewTable: TTOMLTable;
+  KeyPath: string;
 begin
   if Length(KeyParts) = 0 then
     raise ETOMLParserException.Create('Empty key path');
@@ -1550,8 +1435,9 @@ begin
   if Length(KeyParts) = 1 then
   begin
     if RootTable.TryGetValue(KeyParts[0], ExistingValue) then
-//    if RootTable.ContainsKey(KeyParts[0]) then
-      raise ETOMLParserException.CreateFmt('Duplicate key: %s', [KeyParts[0]]);
+      raise ETOMLParserException.CreateFmt(
+        'Cannot redefine key "%s": key already exists',
+        [KeyParts[0]]);
 
     RootTable.Add(KeyParts[0], Value);
     Exit;
@@ -1559,22 +1445,68 @@ begin
 
   // Navigate/create nested tables
   CurrentTable := RootTable;
+  KeyPath := '';
 
   // Process all but the last key part
   for i := 0 to High(KeyParts) - 1 do
   begin
+    // Build the current key path for error messages
+    if i > 0 then
+      KeyPath := KeyPath + '.'
+    else
+      KeyPath := '';
+    KeyPath := KeyPath + KeyParts[i];
+
     if CurrentTable.TryGetValue(KeyParts[i], ExistingValue) then
     begin
-      // Key exists - must be a table
-      if not (ExistingValue is TTOMLTable) then
-        raise ETOMLParserException.CreateFmt('Cannot create table under key "%s" because it already contains a non-table value',
-          [KeyParts[i]]);
+      // Key exists - validate it's a table and not already closed
+      if ExistingValue is TTOMLTable then
+      begin
+        // Check if this is an array of tables
+        CurrentTable := TTOMLTable(ExistingValue);
+      end
+      else if ExistingValue is TTOMLArray then
+      begin
+        // If it's an array, it should be an array of tables
+        var ArrayValue := TTOMLArray(ExistingValue);
+        if ArrayValue.Count = 0 then
+          raise ETOMLParserException.CreateFmt(
+            'Cannot navigate through empty array at key "%s"',
+            [KeyPath]);
 
-      CurrentTable := TTOMLTable(ExistingValue);
+        // Get the last table in the array (current active table)
+        var LastItem := ArrayValue.GetItem(ArrayValue.Count - 1);
+        if not (LastItem is TTOMLTable) then
+          raise ETOMLParserException.CreateFmt(
+            'Cannot navigate through array of non-tables at key "%s"',
+            [KeyPath]);
+
+        CurrentTable := TTOMLTable(LastItem);
+      end
+      else
+      begin
+        // The key exists but contains a non-table value
+        // This is an error according to TOML spec
+        var TypeName: string;
+        case ExistingValue.ValueType of
+          tvtString:    TypeName := 'string';
+          tvtInteger:   TypeName := 'integer';
+          tvtFloat:     TypeName := 'float';
+          tvtBoolean:   TypeName := 'boolean';
+          tvtDateTime:  TypeName := 'datetime';
+          tvtArray:     TypeName := 'array';
+        else
+          TypeName := 'value';
+        end;
+
+        raise ETOMLParserException.CreateFmt(
+          'Cannot create dotted key "%s" because "%s" already exists as a %s (not a table)',
+          [KeyPath + '.' + KeyParts[High(KeyParts)], KeyPath, TypeName]);
+      end;
     end
     else
     begin
-      // Create new intermediate table
+      // Key doesn't exist - create new implicit table
       NewTable := TTOMLTable.Create;
       try
         CurrentTable.Add(KeyParts[i], NewTable);
@@ -1588,9 +1520,35 @@ begin
 
   // Add final value using the last key part
   LastKey := KeyParts[High(KeyParts)];
+
+  // Build complete key path for final error message
+  KeyPath := KeyParts[0];
+  for i := 1 to High(KeyParts) do
+    KeyPath := KeyPath + '.' + KeyParts[i];
+
   if CurrentTable.TryGetValue(LastKey, ExistingValue) then
-//  if CurrentTable.ContainsKey(LastKey) then
-    raise ETOMLParserException.CreateFmt('Duplicate key: %s', [LastKey]);
+  begin
+    // The final key already exists - this is always an error
+    var TypeName: string;
+    if ExistingValue is TTOMLTable then
+      TypeName := 'table'
+    else if ExistingValue is TTOMLArray then
+      TypeName := 'array'
+    else
+      case ExistingValue.ValueType of
+        tvtString:    TypeName := 'string';
+        tvtInteger:   TypeName := 'integer';
+        tvtFloat:     TypeName := 'float';
+        tvtBoolean:   TypeName := 'boolean';
+        tvtDateTime:  TypeName := 'datetime';
+      else
+        TypeName := 'value';
+      end;
+
+    raise ETOMLParserException.CreateFmt(
+      'Cannot redefine key "%s": already defined as %s',
+      [KeyPath, TypeName]);
+  end;
 
   try
     CurrentTable.Add(LastKey, Value);
@@ -1613,13 +1571,11 @@ begin
     (ASCII Unit Separator) so that segments containing dots — e.g. "tt.com" —
     are preserved verbatim.
     SplitDottedKey / Parse use the same #31 delimiter to rebuild the path. }
-
   KeyParts := TList<string>.Create;
   try
     KeyParts.Add(ParseKey);
     while Match(ttDot) do
       KeyParts.Add(ParseKey);
-
     if KeyParts.Count = 1 then
       FullKey := KeyParts[0]
     else
@@ -1629,16 +1585,13 @@ begin
       for i := 1 to KeyParts.Count - 1 do
         FullKey := FullKey + #31 + KeyParts[i];
     end;
-
     Expect(ttEqual);
     Value := ParseValue;
-
     Result := TTOMLKeyValuePair.Create(FullKey, Value);
   finally
     KeyParts.Free;
   end;
 end;
-
 function TTOMLParser.Parse: TTOMLTable;
 var
   CurrentTable: TTOMLTable;
@@ -1653,7 +1606,6 @@ var
   ArrayValue: TTOMLArray;
   NewTable: TTOMLTable;
   HeaderKey: string;            // canonical dotted path of current [header]
-
   function TablePathToKey: string;
   var j: Integer;
   begin
@@ -1664,7 +1616,6 @@ var
       Result := Result + TablePath[j];
     end;
   end;
-
 begin
   Result := TTOMLTable.Create;
   try
@@ -1682,26 +1633,21 @@ begin
             begin
               IsArrayOfTables := False;
               Advance;
-
             // Check for array of tables
               if FCurrentToken.TokenType = ttLBracket then
               begin
                 IsArrayOfTables := True;
                 Advance;
               end;
-
               TablePath.Clear;
               repeat
                 TablePath.Add(ParseKey);
               until not Match(ttDot);
-
               Expect(ttRBracket);
               if IsArrayOfTables then
                 Expect(ttRBracket);
-
               // Build canonical header key for duplicate detection
               HeaderKey := TablePathToKey;
-
               if IsArrayOfTables then
               begin
                 // [[key]] must not clash with a previously defined [key] table header
@@ -1724,7 +1670,6 @@ begin
                     [TablePath.CommaText, FCurrentToken.Line, FCurrentToken.Column]);
                 DefinedTables.Add(HeaderKey);
               end;
-
             // Navigate to the correct table
               CurrentTable := Result;
               for i := 0 to TablePath.Count - 2 do
@@ -1735,11 +1680,8 @@ begin
                   Value := TTOMLTable.Create;
                   CurrentTable.Add(Key, Value);
                 end;
-
-              //修复：正确处理数组类型
                 if Value is TTOMLArray then
                 begin
-                // 如果是数组，获取最后一个元素（当前活动的表）
                   ArrayValue := TTOMLArray(Value);
                   if ArrayValue.Count = 0 then
                     raise ETOMLParserException.CreateFmt('Array %s is empty at line %d, column %d', [Key,
@@ -1752,7 +1694,6 @@ begin
                   raise ETOMLParserException.CreateFmt('Key %s is not a table or array of tables at line %d, column %d',
                     [Key, FCurrentToken.Line, FCurrentToken.Column]);
               end;
-
             // Handle the last key differently for array of tables
               Key := TablePath[TablePath.Count - 1];
               if IsArrayOfTables then
@@ -1764,11 +1705,9 @@ begin
                   CurrentTable.Add(Key, ArrayValue);
                   Value := ArrayValue;
                 end;
-
                 if not (Value is TTOMLArray) then
                   raise ETOMLParserException.CreateFmt('Key %s is not an array at line %d, column %d', [Key,
                     FCurrentToken.Line, FCurrentToken.Column]);
-
               // Add a new table to the array
                 NewTable := TTOMLTable.Create;
                 TTOMLArray(Value).Add(NewTable);
@@ -1791,21 +1730,18 @@ begin
                       FCurrentToken.Line, FCurrentToken.Column]);
                   Value := ArrayValue.Items[ArrayValue.Count - 1];
                 end;
-
                 if not (Value is TTOMLTable) then
                   raise ETOMLParserException.CreateFmt('Key %s is not a table at line %d, column %d', [Key,
                     FCurrentToken.Line, FCurrentToken.Column]);
                 CurrentTable := TTOMLTable(Value);
               end;
             end;
-
           ttIdentifier, ttString:
             begin
               try
                 KeyPair := ParseKeyValue;
-
                 try
-        // 检查是否是点分隔键（用 #31 分隔符判断，由 ParseKeyValue 打包）
+        // Check if it is a dot-separated key (use #31 as the separator, packaged by ParseKeyValue)
                   if Pos(#31, KeyPair.Key) > 0 then
                   begin
                     var KeyParts: TArray<string>;
@@ -1820,7 +1756,6 @@ begin
                   KeyPair.Value.Free;
                   raise;
                 end;
-
               except
                 on E: ETOMLParserException do
                   raise;
@@ -1831,7 +1766,6 @@ begin
             end;
           ttNewLine:
             Advance;
-
         else
           raise ETOMLParserException.CreateFmt('Unexpected token type: %s at line %d, column %d', [GetEnumName
             (TypeInfo(TTokenType), Ord(FCurrentToken.TokenType)), FCurrentToken.Line, FCurrentToken.Column]);
@@ -1847,5 +1781,4 @@ begin
     raise;
   end;
 end;
-
 end.
