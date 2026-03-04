@@ -464,8 +464,10 @@ begin
   TOML := 'timestamp1 = 2024-05-27T07:32:00Z' + sLineBreak;
   TOML := TOML + 'timestamp2 = 1979-05-27T00:32:00-07:00' + sLineBreak;
   TOML := TOML + 'timestamp3 = 1979-05-27T00:32:00.999999Z' + sLineBreak;
+  TOML := TOML + 'timestamp4 = 1979-05-27T00:32:00.123456+05:30'+ sLineBreak;
   TOML := TOML + 'date_only = 2024-05-27' + sLineBreak;
-  TOML := TOML + 'time_only = 12:32:00' + sLineBreak;
+  TOML := TOML + 'time_only1 = 12:32:00' + sLineBreak;
+  TOML := TOML + 'time_only2 = 12:32:00.123456' + sLineBreak;
 //  WriteLn('TOML: '+sLineBreak+TOML);
 
   Config := ParseTOML(TOML);
@@ -474,24 +476,28 @@ begin
     //AssertTrue('Parse datetime TOML', Config.LoadFromString(TOML));
 //    Writeln('load:'+sLineBreak+Config.ToString);
     // Test GetDateTimeValue (returns raw string with full precision)
-    DTStr := Config.GetDateTimeValue('timestamp1', '');
-    AssertTrue('DateTime1 not empty', DTStr <> '');
+    AssertTrue('DateTime1 not empty', Config.TryGetDateTimeValue('timestamp1',DTStr));
     Writeln('    timestamp1: ', DTStr);
 
-    DTStr := Config.GetDateTimeValue('timestamp2', '');
-    AssertTrue('DateTime2 not empty', DTStr <> '');
+    AssertTrue('DateTime2 not empty', Config.TryGetDateTimeValue('timestamp2',DTStr));
     Writeln('    timestamp2: ', DTStr);
 
-    DTStr := Config.GetDateTimeValue('timestamp3', '');
-    AssertTrue('DateTime3 not empty', DTStr <> '');
+    AssertTrue('DateTime3 not empty', Config.TryGetDateTimeValue('timestamp3',DTStr));
     AssertTrue('DateTime3 has microseconds', Pos('.999999', DTStr) > 0);
     Writeln('    timestamp3 (with microseconds): ', DTStr);
 
-    DTStr := Config.GetDateTimeValue('date_only', '');
+    AssertTrue('DateTime4 not empty', Config.TryGetDateTimeValue('timestamp4',DTStr));
+    AssertTrue('Offset date and time',Pos('+05:30', DTStr) > 0);
+    Writeln('    timestamp4: ', DTStr);
+
+    AssertTrue('date_only not empty',Config.TryGetDateTimeValue('date_only',DTStr));
     Writeln('    date_only: ', DTStr);
-//    DTstr:=DateTimeToStr(Config.GetDateTime('time_only'));
-    DTStr := Config.GetDateTimeValue('time_only', '');
-    Writeln('    time_only: ', DTStr);
+
+    AssertTrue('time_only1 not empty',Config.TryGetDateTimeValue('time_only1',DTStr));
+    Writeln('    time_only1: ', DTStr);
+
+    AssertTrue('time_only2 not empty',Config.TryGetDateTimeValue('time_only2',DTStr));
+    Writeln('    time_only2: ', DTStr);
 
     // Test TryGetDateTimeValue
     AssertTrue('TryGetDateTimeValue success', Config.TryGetDateTimeValue('timestamp3', DTStr));
@@ -778,3 +784,4 @@ begin
   Writeln('Press Enter to exit...');
   Readln;
 end.
+
