@@ -11,8 +11,10 @@
 - ✅ 流畅的构建器模式
 - ✅ 覆盖保护机制
 - ✅ 文件和字符串操作
+- ✅ 高精度浮点数支持
 - ✅ 高精度日期时间支持
 - ✅ 点分隔路径访问
+- ✅ 与 JSON 格式的相互转换
 
 ---
 
@@ -65,6 +67,11 @@ function GetFloat(const Key: string; const DefaultValue: Double = 0.0): Double;
 pi := Config.GetFloat('math.pi', 3.14159);
 rate := Config.GetFloat('conversion.rate', 1.0);
 ```
+#### GetFloatValue - 高精度浮点数读取
+保留 TOML 文件中的精确表示，如 "3.14"、"6.626e-34"、"inf"
+```pascal
+function GetFloatValue(const Key: string; const DefaultValue: String = ''): String;
+```
 
 #### GetBool - 布尔值读取
 
@@ -89,7 +96,7 @@ function GetDateTime(const Key: string; const DefaultValue: TDateTime = 0): TDat
 lastModified := Config.GetDateTime('metadata.modified', Now);
 ```
 
-#### GetDateTimeValue - 高精度日期时间（新增）
+#### GetDateTimeValue - 高精度日期时间
 
 ```pascal
 function GetDateTimeValue(const Key: string; const DefaultValue: String = ''): String;
@@ -156,6 +163,7 @@ end;
 - `TryGetStr` - 字符串
 - `TryGetInt` - 整数
 - `TryGetFloat` - 浮点数
+- `TryGetFloatValue` - 高精度浮点数
 - `TryGetBool` - 布尔值
 - `TryGetDateTime` - 日期时间
 - `TryGetDateTimeValue` - 高精度日期时间
@@ -207,8 +215,10 @@ else
 - `SetStr(Key, Value, Overwrite)` - 字符串
 - `SetInt(Key, Value, Overwrite)` - 整数
 - `SetFloat(Key, Value, Overwrite)` - 浮点数
+- `SetFloatValue(key, Value, Overwrite)` - 高精度浮点数
 - `SetBool(Key, Value, Overwrite)` - 布尔值
 - `SetDateTime(Key, Value, Overwrite)` - 日期时间
+- `SetDateTimeValue(key, value, Overwrite)` - 高精度日期时间
 - `SetArray(Key, Value, Overwrite)` - 数组
 - `SetTable(Key, Value, Overwrite)` - 表
 
@@ -439,8 +449,10 @@ Config.SetArray('fruits', Arr);
 - `AddStr(Value)` - 添加字符串
 - `AddInt(Value)` - 添加整数
 - `AddFloat(Value)` - 添加浮点数
+- `AddFloatValue(value)' - 添加高精度浮点数
 - `AddBool(Value)` - 添加布尔值
 - `AddDateTime(Value)` - 添加日期时间
+- `AddDateTimeValue(value)` - 添加高精度日期时间
 - `AddTable(Value)` - 添加表
 - `AddArray(Value)` - 添加数组
 
