@@ -2,14 +2,15 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Delphi](https://img.shields.io/badge/Delphi2005%20and%20high-green.svg)](https://www.embarcadero.com/products/delphi/)
-[![TOML](https://img.shields.io/badge/TOML-1.0.0-green.svg)](https://toml.io/)
+[![TOML](https://img.shields.io/badge/TOML-1.1.0-green.svg)](https://toml.io/)
 
-A unit for parsing [TOML](https://toml.io/) format, rewritten from [ikelaiah's TOML Parser for Free Pascal](https://github.com/ikelaiah/toml-fp) v1.0.3, for Delphi 2005 and later, with the following modifications:
-1. The ParseTOMLFile function in the TOML.Parser.pas unit has been updated to automatically recognize file encoding formats, enhancing compatibility.
-2. To support older versions of Delphi, simply replace all for-in loops in the source code with for-to loops.
-3. Add the TOML.Helper.pas unit to simplify read and write operations. With slight modifications, this unit can also be applied to Free Pascal.
-4. Correct original unit errors or add unimplemented features: such as Unicode escape sequences not implemented, missing \b \f escape sequences, no support for trailing backslashes, failure to remove first-line newline characters from multi-line strings, failure to handle quotation mark separators, failure to validate underscores in numbers, logical errors in trailing backslashes, and errors in parsing pure time formats, etc.
-5. Added a new test unit; other additions to be continued.
+A unit for parsing the [TOML](https://toml.io/) version 1.1.0 format, rewritten from [ikelaiah's TOML Parser for Free Pascal](https://github.com/ikelaiah/toml-fp) version 1.0.3, compatible with Delphi 2005 and later, with significant revisions and enhancements.
+1. Fully supports the [TOML V1.1.0](https://toml.io/en/v1.1.0) specification, and has passed all 894 tests (V 1.1.0 version) of the [TOML official test program](https://github.com/toml-lang/toml-test).
+2. Added the TOML.Helper.pas unit, adding a large number of functions and methods to simplify read and write operations.
+3. Added the TOML.Json.pas unit to support mutual conversion between TOML and JSON formats.
+4. Floating-point and date data types are supported for output in raw precision format: RawString.
+5. With slight modifications, it can also support lower versions of Delphi and Free Pascal.
+6. Test unit usage: Compile the tomldecoder and TOMLEncoder units into exe files, and then download and run the [official test program](https://github.com/toml-lang/toml-test/releases):
 
 The following are the new methods compared to the original unit:
 - Read
@@ -23,6 +24,7 @@ The following are the new methods compared to the original unit:
       Config.GetStr(Key, Default);       // string
       Config.GetInt(Key, Default);       // integer
       Config.GetFloat(Key, Default);     // float
+      Config.GetFloatValue(Key, Default); // float with raw precision string 
       Config.GetBool(Key, Default);      // boolean
       Config.GetDateTime(Key, Default);  // datetime
       Config.GetDateTimeValue(Key, Default);  // Date and time raw precision string
@@ -30,6 +32,7 @@ The following are the new methods compared to the original unit:
       Config.TryGetStr(Key, Value);      // string
       Config.TryGetInt(Key, Value);      // integer
       Config.TryGetFloat(Key, Value);    // float
+      Config.TryGetFloatValue(Key, Value) // float with raw precision string
       Config.TryGetBool(Key, Value);     // boolean
       Config.TryetDateTime(Key, Value);  // datetime
       Config.TryGetDateTimeValue(Key, Value);  // Date and time raw precision string
@@ -51,8 +54,10 @@ The following are the new methods compared to the original unit:
       Config.SetStr(key, value, [Overwrite]);
       Config.SetInt(key, value, [Overwrite]);
       Config.SetFloat(key, value, [Overwrite]);
+      Config.SetFloatValue(Key, value, [Overwrite]);
       Config.SetBool(key, value, [Overwrite]);
       Config.SetDateTime(key, value, [Overwrite]);
+      Config.SetDateTimeValue(key, value, [Overwrite]);
       Config.SetArray(key, value, [Overwrite]);
       Config.SetTable(key, value, [Overwrite]);
 
