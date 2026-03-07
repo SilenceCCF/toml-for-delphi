@@ -5,11 +5,11 @@
   主要功能：
     - TTOMLTableHelper：表的读取（GetXxx / TryGetXxx）、写入（SetXxx）、
       链式调用（Put）、文件操作（LoadFromFile / SaveToFile）、
-      键管理（HasKey / GetKeys / Remove / Clear / Clone / Count）、
+      键管理（HasKey / GetKeys / Remove / Clear / Clone / Count）
       与 JSON 格式互转（SaveToJSONFile、SaveToJSON、LoadFromJSONFile、
       LoadFromJson）
     - TTOMLArrayHelper：数组元素的读取（GetXxx）、追加（AddXxx）、
-      遍历（ForEachTable）、移除（RemoveAt / Clear）
+      遍历（ForEachTable）、移除（RemoveAt / Clear）等
 
   全局工厂函数：
     - NewTable / NewArray：创建空对象
@@ -52,6 +52,13 @@ type
     { 读取浮点数值（支持点号路径） }
     function GetFloat(const Key: string; const DefaultValue: Double = 0.0): Double;
     function TryGetFloat(const Key: string; out Value: Double): Boolean;
+
+    { 读取浮点数原始文本（保留 TOML 文件中的精确表示，如 "3.14"、"6.626e-34"、"inf"）
+      与 GetFloat 的区别：GetFloat 返回转换后的 Double，可能因 IEEE 754 精度损失；
+      GetFloatValue 返回文件中的原始字符串，可安全用于显示或高精度场景。
+      @param DefaultValue 键不存在或不是浮点类型时返回的默认值 }
+    function GetFloatValue(const Key: string; const DefaultValue: string = ''): string;
+    function TryGetFloatValue(const Key: string; out Value: string): Boolean;
 
     { 读取布尔值（支持点号路径） }
     function GetBool(const Key: string; const DefaultValue: Boolean = False): Boolean;
@@ -97,12 +104,31 @@ type
     function SetFloat(const Key: string; const Value: Double;
       Overwrite: Boolean = True): Boolean;
 
+    { 写入浮点数原始文本（直接存储指定的字符串表示，不做 Double 转换）
+      适用于需要精确控制 TOML 输出格式的场景，如保留 "6.626e-34"、"inf"、"nan"。
+      @param RawValue  原始文本，须为合法的 TOML 浮点数表示
+      @returns True 若成功写入，False 若键已存在且 Overwrite=False }
+    function SetFloatValue(const Key: string; const RawValue: string;
+      Overwrite: Boolean = True): Boolean;
+
     { 写入布尔值 }
     function SetBool(const Key: string; const Value: Boolean;
       Overwrite: Boolean = True): Boolean;
 
     { 写入日期时间值 }
     function SetDateTime(const Key: string; const Value: TDateTime;
+      Overwrite: Boolean = True): Boolean;
+
+    { 写入日期时间原始文本（直接存储指定的字符串表示，不做 TDateTime 转换）
+      原始文本须符合 TOML 1.0.0 规范，支持以下四种形式：
+        "1979-05-27T07:32:00Z"          带时区偏移的日期时间
+        "1979-05-27T07:32:00.999999"    本地日期时间（含小数秒）
+        "1979-05-27"                    本地日期
+        "07:32:00"                      本地时间
+      格式由 TOML 解析器负责校验，格式非法时返回 False。
+      @param RawValue  原始文本，须为合法的 TOML 日期时间字面量
+      @returns True 若成功写入，False 若格式非法或键已存在且 Overwrite=False }
+    function SetDateTimeValue(const Key: string; const RawValue: string;
       Overwrite: Boolean = True): Boolean;
 
     { 写入数组（成功时转移所有权，失败时调用方保留所有权）
@@ -216,6 +242,11 @@ type
     function GetStr(Index: Integer; const DefaultValue: string = ''): string;
     function GetInt(Index: Integer; const DefaultValue: Int64 = 0): Int64;
     function GetFloat(Index: Integer; const DefaultValue: Double = 0.0): Double;
+
+    { 获取浮点数原始文本（保留 TOML 文件中的精确表示）
+      @param DefaultValue 索引越界或元素不是浮点类型时返回的默认值 }
+    function GetFloatValue(Index: Integer; const DefaultValue: string = ''): string;
+
     function GetBool(Index: Integer; const DefaultValue: Boolean = False): Boolean;
 
     { 获取指定索引处的表元素，不存在或类型不符时返回 nil }
@@ -230,8 +261,17 @@ type
     function AddStr(const Value: string): TTOMLArray;
     function AddInt(const Value: Int64): TTOMLArray;
     function AddFloat(const Value: Double): TTOMLArray;
+
+    { 追加浮点数原始文本（直接存储指定的字符串表示，适合精度敏感或特殊值场景）
+      @param RawValue 原始文本，须为合法的 TOML 浮点数表示（如 "6.626e-34"、"inf"） }
+    function AddFloatValue(const RawValue: string): TTOMLArray;
+
     function AddBool(const Value: Boolean): TTOMLArray;
     function AddDateTime(const Value: TDateTime): TTOMLArray;
+
+    { 追加日期时间原始文本（直接存储指定的字符串表示，格式规则同 SetDateTimeValue）
+      格式非法时返回 nil，调用方可据此判断是否成功 }
+    function AddDateTimeValue(const RawValue: string): TTOMLArray;
 
     { 追加表元素（转移所有权）
       @note 若返回 nil，调用方仍保有 Value 的所有权，需自行释放 }
@@ -296,7 +336,7 @@ function GetValueFromPath(Root: TTOMLTable; const Path: string): TTOMLValue;
 implementation
 
 uses
-  StrUtils;
+  StrUtils, Math;
 
 { ===== 全局工厂函数实现 ===== }
 
@@ -668,6 +708,36 @@ begin
   end;
 end;
 
+function TTOMLTableHelper.GetFloatValue(const Key: string;
+  const DefaultValue: string): string;
+var
+  Value: TTOMLValue;
+begin
+  try
+    Value := GetValueFromPath(Self, Key);
+    if Assigned(Value) and (Value is TTOMLFloat) then
+      Result := TTOMLFloat(Value).RawString
+    else
+      Result := DefaultValue;
+  except
+    Result := DefaultValue;
+  end;
+end;
+
+function TTOMLTableHelper.TryGetFloatValue(const Key: string;
+  out Value: string): Boolean;
+var
+  TOMLVal: TTOMLValue;
+begin
+  try
+    TOMLVal := GetValueFromPath(Self, Key);
+    Result  := Assigned(TOMLVal) and (TOMLVal is TTOMLFloat);
+    if Result then Value := TTOMLFloat(TOMLVal).RawString;
+  except
+    Result := False;
+  end;
+end;
+
 function TTOMLTableHelper.GetBool(const Key: string;
   const DefaultValue: Boolean): Boolean;
 var
@@ -903,6 +973,36 @@ begin
   end;
 end;
 
+function TTOMLTableHelper.SetFloatValue(const Key: string;
+  const RawValue: string; Overwrite: Boolean): Boolean;
+var
+  NewValue: TTOMLFloat;
+  FS:       TFormatSettings;
+  F:        Double;
+begin
+  { 将原始文本解析为 Double，同时保留文本本身，
+    使序列化时能精确还原 RawValue 中的格式。
+    特殊值 inf / +inf / -inf / nan 按 TOML 规范处理。 }
+  try
+    FS := TFormatSettings.Invariant;
+    if SameText(RawValue, 'inf') or SameText(RawValue, '+inf') then
+      F := Infinity
+    else if SameText(RawValue, '-inf') then
+      F := NegInfinity
+    else if SameText(RawValue, 'nan') then
+      F := NaN
+    else if not TryStrToFloat(RawValue, F, FS) then
+      raise ETOMLException.CreateFmt(
+        'SetFloatValue: "%s" is not a valid TOML float', [RawValue]);
+
+    NewValue := TTOMLFloat.Create(F, RawValue);
+    Result   := SetValueAtPath(Self, SplitPath(Key), NewValue, Overwrite);
+    if not Result then NewValue.Free;
+  except
+    Result := False;
+  end;
+end;
+
 function TTOMLTableHelper.SetBool(const Key: string; const Value: Boolean;
   Overwrite: Boolean): Boolean;
 var
@@ -925,6 +1025,41 @@ begin
   try
     NewValue := TTOMLDateTime.Create(Value);
     Result   := SetValueAtPath(Self, SplitPath(Key), NewValue, Overwrite);
+    if not Result then NewValue.Free;
+  except
+    Result := False;
+  end;
+end;
+
+function TTOMLTableHelper.SetDateTimeValue(const Key: string;
+  const RawValue: string; Overwrite: Boolean): Boolean;
+var
+  Temp:     TTOMLTable;
+  RawVal:   TTOMLValue;
+  NewValue: TTOMLDateTime;
+begin
+  { 将原始文本包装为完整的 TOML 行，委托 Parser 完成格式校验和解析，
+    同时保留 RawString 以确保序列化时原样还原。 }
+  try
+    Temp := ParseTOMLString('__dt__ = ' + RawValue);
+    try
+      if not Temp.TryGetValue('__dt__', RawVal) then
+        raise ETOMLParserException.Create('SetDateTimeValue: parse returned no value');
+      if not (RawVal is TTOMLDateTime) then
+        raise ETOMLParserException.CreateFmt(
+          'SetDateTimeValue: "%s" is not a TOML datetime literal', [RawValue]);
+
+      // 克隆 TTOMLDateTime（Temp 即将释放，需转移出对象所有权）
+      NewValue := TTOMLDateTime.Create(
+        TTOMLDateTime(RawVal).Value,
+        RawValue,  // 始终用调用方传入的原始文本，保留其精确格式
+        TTOMLDateTime(RawVal).Kind,
+        TTOMLDateTime(RawVal).TimeZoneOffset);
+    finally
+      Temp.Free;
+    end;
+
+    Result := SetValueAtPath(Self, SplitPath(Key), NewValue, Overwrite);
     if not Result then NewValue.Free;
   except
     Result := False;
@@ -1201,6 +1336,27 @@ begin
   end;
 end;
 
+function TTOMLArrayHelper.GetFloatValue(Index: Integer;
+  const DefaultValue: string): string;
+var
+  Item: TTOMLValue;
+begin
+  try
+    if (Index >= 0) and (Index < Self.Count) then
+    begin
+      Item := Self.GetItem(Index);
+      if Assigned(Item) and (Item is TTOMLFloat) then
+        Result := TTOMLFloat(Item).RawString
+      else
+        Result := DefaultValue;
+    end
+    else
+      Result := DefaultValue;
+  except
+    Result := DefaultValue;
+  end;
+end;
+
 function TTOMLArrayHelper.GetBool(Index: Integer;
   const DefaultValue: Boolean): Boolean;
 var
@@ -1331,6 +1487,39 @@ begin
   end;
 end;
 
+function TTOMLArrayHelper.AddFloatValue(const RawValue: string): TTOMLArray;
+var
+  NewValue: TTOMLFloat;
+  FS:       TFormatSettings;
+  F:        Double;
+begin
+  Result := Self;
+  try
+    FS := TFormatSettings.Invariant;
+    if SameText(RawValue, 'inf') or SameText(RawValue, '+inf') then
+      F := Infinity
+    else if SameText(RawValue, '-inf') then
+      F := NegInfinity
+    else if SameText(RawValue, 'nan') then
+      F := NaN
+    else if not TryStrToFloat(RawValue, F, FS) then
+    begin
+      Result := nil;
+      Exit;
+    end;
+
+    NewValue := TTOMLFloat.Create(F, RawValue);
+    try
+      Self.Add(NewValue);
+    except
+      NewValue.Free;
+      Result := nil;
+    end;
+  except
+    Result := nil;
+  end;
+end;
+
 function TTOMLArrayHelper.AddBool(const Value: Boolean): TTOMLArray;
 var
   NewValue: TTOMLBoolean;
@@ -1356,6 +1545,42 @@ begin
   Result := Self;
   try
     NewValue := TTOMLDateTime.Create(Value);
+    try
+      Self.Add(NewValue);
+    except
+      NewValue.Free;
+      Result := nil;
+    end;
+  except
+    Result := nil;
+  end;
+end;
+
+function TTOMLArrayHelper.AddDateTimeValue(const RawValue: string): TTOMLArray;
+var
+  Temp:     TTOMLTable;
+  RawVal:   TTOMLValue;
+  NewValue: TTOMLDateTime;
+begin
+  Result := Self;
+  try
+    Temp := ParseTOMLString('__dt__ = ' + RawValue);
+    try
+      if not Temp.TryGetValue('__dt__', RawVal) or
+         not (RawVal is TTOMLDateTime) then
+      begin
+        Result := nil;
+        Exit;
+      end;
+      NewValue := TTOMLDateTime.Create(
+        TTOMLDateTime(RawVal).Value,
+        RawValue,
+        TTOMLDateTime(RawVal).Kind,
+        TTOMLDateTime(RawVal).TimeZoneOffset);
+    finally
+      Temp.Free;
+    end;
+
     try
       Self.Add(NewValue);
     except
@@ -1488,7 +1713,7 @@ begin
       SL.Free;
     end;
   except
-    // False
+    // 出错返回 False
   end;
 end;
 
@@ -1509,7 +1734,7 @@ begin
     end;
     Result := LoadFromJSON(JSON, ANullAsEmptyString);
   except
-    // False
+    // 出错返回 False
   end;
 end;
 
