@@ -1,6 +1,6 @@
 (* TOML_Parser.pas
   TOML 解析器单元（词法分析 + 语法分析）。
-  本单元实现了符合 TOML v1.0.0 规范的完整解析器，采用两阶段设计：
+  本单元实现了符合 TOML v1.1.0 规范的完整解析器，采用两阶段设计：
     1. TTOMLLexer  —— 词法分析，将原始文本转换为 Token 序列
     2. TTOMLParser —— 语法分析，将 Token 序列转换为 TOML 数据结构
   支持的特性：
