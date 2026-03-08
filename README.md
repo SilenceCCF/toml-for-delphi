@@ -1,7 +1,7 @@
 # DelphiTOML
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Delphi](https://img.shields.io/badge/Delphi2005%20and%20high-green.svg)](https://www.embarcadero.com/products/delphi/)
+[![Delphi](https://img.shields.io/badge/Delphi10.3%20and%20high-green.svg)](https://www.embarcadero.com/products/delphi/)
 [![TOML](https://img.shields.io/badge/TOML-1.1.0-green.svg)](https://toml.io/)
 
 一个解析 [TOML](https://toml.io/) V 1.1.0 版本格式的单元，改写自 [ikelaiah 的 TOML Parser for Free Pascal](https://github.com/ikelaiah/toml-fp) v1.0.3 版本，适用于 Delphi 2005 及更高版本，并做了大量修订及功能增强：
