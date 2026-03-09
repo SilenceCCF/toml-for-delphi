@@ -1,3 +1,4 @@
+🇺🇸 [English](TOML_Helper_Documentation.md) | 🇨🇳 [简体中文](TOML_Helper_Documentation_CN.md)
 # TOML.Helper.pas 功能说明文档
 
 ## 📋 概述
