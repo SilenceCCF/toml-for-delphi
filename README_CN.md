@@ -25,8 +25,8 @@ encoder tests: 214 passed,  0 failed
 invalid tests: 466 passed,  0 failed
 ```
 
-```  
-- 示例：
+
+- **示例：**
 ```
     //打开 toml 文件
     Config := LoadToml('config.toml');
