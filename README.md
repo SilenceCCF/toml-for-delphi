@@ -7,7 +7,7 @@
 
 A unit for parsing the [TOML](https://toml.io/) version 1.1.0 format, rewritten from [ikelaiah's TOML Parser for Free Pascal](https://github.com/ikelaiah/toml-fp) version 1.0.3, compatible with Delphi 2005 and later, with significant revisions and enhancements.
 1. Fully supports the [TOML V1.1.0](https://toml.io/en/v1.1.0) specification, and has passed all 894 tests (V 1.1.0 version) of the [TOML official test program](https://github.com/toml-lang/toml-test).
-2. Added the TOML.Helper.pas unit, adding a large number of functions and methods to simplify read and write operations.
+2. Added the TOML.Helper.pas unit, adding a large number of functions and methods to simplify read and write operations. For usage instructions, please refer to the [documentation](docs/TOML_Helper_Documentation.md).
 3. Added the TOML.Json.pas unit to support mutual conversion between TOML and JSON formats.
 4. Floating-point and date data types are supported for output in raw precision format: RawString.
 5. With slight modifications, it can also support lower versions of Delphi and Free Pascal.
