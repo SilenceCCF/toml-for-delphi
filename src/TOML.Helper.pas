@@ -38,7 +38,6 @@ type
   { TOML Table Assistant – Adding convenient read and write operations to TTOMLTable }
   TTOMLTableHelper = class helper for TTOMLTable
   public
-
     { ===== Read method ===== }
 
     { Read string values, supporting dotted paths (e.g., "server.host")
@@ -167,12 +166,12 @@ type
     { Serialize this table and save it to a file.
       @param WriteBOM: Whether to write to a UTF-8 BOM
       @returns }
-    function SaveToFile(const FileName: string; WriteBOM: Boolean = True): Boolean;
+    function SaveToFile(const FileName: string; WriteBOM: Boolean = True; AWrapWidth: Integer = 0): Boolean;
 
     { ===== Serialization ===== }
 
     { Serialize this table into a TOML string; return an empty string on error. }
-    function toString: string; reintroduce;
+    function toString(AWrapWidth: Integer = 0): string; reintroduce;
 
     { ===== Tools and methods ===== }
 
@@ -219,11 +218,10 @@ type
       @returns }
     function LoadFromJSONFile(const FileName: string; ANullAsEmptyString: Boolean = False): Boolean;
   end;
-
   { TOML Array Helper – Adds convenient read and write operations to TTOMLArray }
+
   TTOMLArrayHelper = class helper for TTOMLArray
   public
-
     { ===== Read method ===== }
 
     function GetStr(Index: Integer; const DefaultValue: string = ''): string;
@@ -384,41 +382,40 @@ type
 
 { Create an empty TOML table }
 function NewTable: TTOMLTable;
-
 { Create an empty TOML array }
+
 function NewArray: TTOMLArray;
-
 { Load TOML from file, return nil when error occurs (no exception thrown) }
+
 function LoadTOML(const FileName: string): TTOMLTable;
-
 { Parse TOML from string, return nil on error (no exception thrown) }
-function ParseTOML(const ATOML: string): TTOMLTable;
 
+function ParseTOML(const ATOML: string): TTOMLTable;
 { Parsing TOML from a string
   @param Config: Returns the parsing result on success, and nil on failure.
   @returns }
-function TryParseTOML(const ATOML: string; out Config: TTOMLTable): Boolean;
 
+function TryParseTOML(const ATOML: string; out Config: TTOMLTable): Boolean;
 { == Path helper functions (for internal use, but can also be called externally). == }
 
 { Split the dot path with quotation marks and correctly handle the dots
   within the quotation marks
   Example：site."tt.com".owner -> ["site", "tt.com", "owner"] }
-function SplitPath(const Path: string): TArray<string>;
 
+function SplitPath(const Path: string): TArray<string>;
 { Navigate to the target table along the dotted path;
   return nil if the table does not exist. }
-function NavigateToTable(Root: TTOMLTable; const Path: string): TTOMLTable;
 
+function NavigateToTable(Root: TTOMLTable; const Path: string): TTOMLTable;
 { Retrieve the value along the dotted path;
   return nil if the value does not exist. }
+
 function GetValueFromPath(Root: TTOMLTable; const Path: string): TTOMLValue;
 
 implementation
 
 uses
   StrUtils, Math;
-
 { ===== Global factory function implementation ===== }
 
 function NewTable: TTOMLTable;
@@ -459,7 +456,6 @@ begin
     Result := False;
   end;
 end;
-
 { ===== Path helper function implementation ===== }
 
 function SplitPath(const Path: string): TArray<string>;
@@ -619,7 +615,6 @@ begin
     Result := nil;
   end;
 end;
-
 { ===== Write path helper functions (for internal use) ===== }
 
 { Navigate along Parts[0..High-1] (non-existent intermediate
@@ -627,6 +622,7 @@ end;
   Then write NewValue at Parts[High].
   Returns True on success; on failure,
   NewValue is not released and is handled by the caller. }
+
 function SetValueAtPath(Root: TTOMLTable; const Parts: TArray<string>; NewValue: TTOMLValue; Overwrite:
   Boolean): Boolean;
 var
@@ -678,7 +674,6 @@ begin
   CurrentTable.Items.AddOrSetValue(LastKey, NewValue);
   Result := True;
 end;
-
 { ===== TTOMLTableHelper —— Read method implementation ===== }
 
 function TTOMLTableHelper.GetStr(const Key: string; const DefaultValue: string): string;
@@ -991,7 +986,6 @@ begin
     Result := nil;
   end;
 end;
-
 { ===== TTOMLTableHelper —— Write method implementation ===== }
 
 function TTOMLTableHelper.SetStr(const Key: string; const Value: string; Overwrite: Boolean): Boolean;
@@ -1148,7 +1142,6 @@ begin
     Result := False;
   end;
 end;
-
 { ===== TTOMLTableHelper —— Builder pattern implementation ===== }
 
 function TTOMLTableHelper.Put(const Key: string; const Value: string; Overwrite: Boolean): TTOMLTable;
@@ -1198,7 +1191,6 @@ begin
   SetTable(Key, Value, Overwrite);
   Result := Self;
 end;
-
 { ===== TTOMLTableHelper —— File operation implementation ===== }
 
 function TTOMLTableHelper.LoadFromFile(const FileName: string; ClearExisting: Boolean): Boolean;
@@ -1251,7 +1243,7 @@ begin
   end;
 end;
 
-function TTOMLTableHelper.SaveToFile(const FileName: string; WriteBOM: Boolean): Boolean;
+function TTOMLTableHelper.SaveToFile(const FileName: string; WriteBOM: Boolean; AWrapWidth: Integer): Boolean;
 begin
   try
     Result := TOML.Serializer.SerializeTOMLToFile(Self, FileName, WriteBOM);
@@ -1259,18 +1251,16 @@ begin
     Result := False;
   end;
 end;
-
 { ===== TTOMLTableHelper —— Serialization implementation ===== }
 
-function TTOMLTableHelper.toString: string;
+function TTOMLTableHelper.toString(AWrapWidth: Integer): string;
 begin
   try
-    Result := TOML.Serializer.SerializeTOML(Self);
+    Result := TOML.Serializer.SerializeTOML(Self, AWrapWidth);
   except
     Result := '';
   end;
 end;
-
 { ===== TTOMLTableHelper —— Tool method implementation ===== }
 
 function TTOMLTableHelper.Remove(const Key: string; FreeValue: Boolean): Boolean;
@@ -1313,7 +1303,6 @@ begin
     Result := 0;
   end;
 end;
-
 { ===== TTOMLTableHelper：Implement the interconversion method with JSON ===== }
 
 function TTOMLTableHelper.ToJSON(APretty: Boolean; AIndentSize: Integer): string;
@@ -1387,7 +1376,6 @@ begin
     // Return False if an error occurs
   end;
 end;
-
 { ===== TTOMLArrayHelper —— Read method implementation ===== }
 
 function TTOMLArrayHelper.GetStr(Index: Integer; const DefaultValue: string): string;
@@ -1753,7 +1741,6 @@ begin
   end;
 end;
 
-
 { ===== TTOMLArrayHelper —— Add method implementation ===== }
 
 function TTOMLArrayHelper.AddStr(const Value: string): TTOMLArray;
@@ -1974,7 +1961,6 @@ end;
 
 { ===== SetXxx 方法实现 ===== }
 
-
 function TTOMLArrayHelper.SetInt(Index: Integer; const Value: Int64): Boolean;
 var
   OldItem: TTOMLValue;
@@ -2138,8 +2124,8 @@ begin
     try
       if not Temp.TryGetValue('__dt__', RawVal) or not (RawVal is TTOMLDateTime) then
         Exit;  // 解析失败，直接返回
-      NewValue := TTOMLDateTime.Create(TTOMLDateTime(RawVal).Value, RawValue,
-        TTOMLDateTime(RawVal).Kind, TTOMLDateTime(RawVal).TimeZoneOffset);
+      NewValue := TTOMLDateTime.Create(TTOMLDateTime(RawVal).Value, RawValue, TTOMLDateTime(RawVal).Kind,
+        TTOMLDateTime(RawVal).TimeZoneOffset);
     finally
       Temp.Free;
     end;
@@ -2215,7 +2201,6 @@ begin
     Result := False;
   end;
 end;
-
 
 
 
@@ -2429,7 +2414,6 @@ begin
     Result := False;
   end;
 end;
-
 
 { ===== TTOMLArrayHelper —— Tool method implementation ===== }
 
