@@ -27,41 +27,50 @@ invalid tests: 466 passed,  0 failed
 
 
 - **示例：**
+   打开 toml 文件
+```pascal
+   Config := LoadToml('config.toml');
 ```
-    //打开 toml 文件
-    Config := LoadToml('config.toml');
-    // 或：
-    Config := NewTable;
-    Config.LoadFromFile('config.toml');
-    // 或：
-    Config :=TTOMLTable.Create;
-    Config.LoadFromFile('config.toml');
-    // 读取
-    width := Config.GetInt('width', 800);
-    title := Config.GetStr('title');
-    debug := Config.GetBool('debug',False);
-    name := Config.GetStr('server.host', 'localhost');  // 支持点分隔路径
-    if Config.TryGetStr('name',value) then
-    showmessage(value);
-
-    //创建
-    Config := NewTable;
-    Config :=TTOMLTable.Create;
-    Tags := NewArray;
-
-    //创建同时赋值：
-    Config := NewTable
+   或：
+```pascal    
+   Config := NewTable;
+   Config.LoadFromFile('config.toml');
+```
+   或：
+```pascal    
+   Config :=TTOMLTable.Create;
+   Config.LoadFromFile('config.toml');
+```
+   读取：
+```pascal   
+   width := Config.GetInt('width', 800);
+   title := Config.GetStr('title');
+   debug := Config.GetBool('debug',False);
+   name := Config.GetStr('server.host', 'localhost');  // 支持点分隔路径
+   if Config.TryGetStr('name',value) then
+   showmessage(value);
+```
+   创建：
+```pascal   
+   Config := NewTable;
+   Config :=TTOMLTable.Create;
+   Tags := NewArray;
+```
+   创建同时赋值：
+```pascal   
+   Config := NewTable
       .SetStr('app_name', 'My Application')
       .SetStr('version', '1.0.0')
       .SetInt('port', 8080)
       .SetBool('debug', False);
-    Tags := NewArray
+   Tags := NewArray
       .AddStr('pascal')
       .AddStr('delphi')
       .AddStr('toml');
-
-    //创建嵌套结构：
-    Config := NewTable
+```
+   创建嵌套结构：
+```pascal   
+   Config := NewTable
       .Put('server',
         NewTable
           .Put('host', 'localhost')
@@ -73,21 +82,27 @@ invalid tests: 466 passed,  0 failed
           .Put('port', 5432)
           .Put('pool_size', 10)
       );
-  
-    // 写入（默认覆盖原值）
-    Config.SetStr('title', 'My App');
-    Config.SetInt('width', 1920, True);
-    Config.SetBool('debug', False);
-    Config.SetFloat('version', 1.1, False);
-
-    // 自动识别类型写入（默认覆盖原值）
-    Config.Put('width', 1920)
-          .Put('height', 1080)
-          .Put('title', 'My App', False);
-    // 保存文件
-    Config.SaveToFile('config.toml');
-    Config.SaveToFile('config.toml',80); //字符串值按80列换行
-    //创建表数组
+```
+   写入（默认覆盖原值）：
+```pascal  
+   Config.SetStr('title', 'My App');
+   Config.SetInt('width', 1920, True);
+   Config.SetBool('debug', False);
+   Config.SetFloat('version', 1.1, False);
+```
+   自动识别类型写入（默认覆盖原值）：
+```pascal   
+   Config.Put('width', 1920)
+         .Put('height', 1080)
+         .Put('title', 'My App', False);
+```
+   保存文件：
+```pascal   
+   Config.SaveToFile('config.toml');
+   Config.SaveToFile('config.toml',80); //字符串值按80列换行
+```
+   创建表数组：
+```pascal   
     Servers := NewArray
       .AddTable(
         NewTable
@@ -100,20 +115,23 @@ invalid tests: 466 passed,  0 failed
           .Put('ip', '192.168.1.20')
       );
     Config.SetArray('servers', Servers);
-  
-    // 遍历表数组方式一
-    parameters.ForEachTable(
+```
+   遍历表数组方式一：
+```pascal   
+   parameters.ForEachTable(
       procedure(param: TTOMLTable)
         begin
           showmessage(param.GetStr('name'));
         end
-    );
-    // 遍历表数组方式二
-    procedure ProcessParameter(param: TTOMLTable);
+   );
+```
+   遍历表数组方式二：
+```pascal   
+   procedure ProcessParameter(param: TTOMLTable);
       begin
         showmessage(param.GetStr('name'));
       end;    
-    parameters.ForEachTable(ProcessParameter);  // 调用
+   parameters.ForEachTable(ProcessParameter);  // 调用
 ```
 
 ----
