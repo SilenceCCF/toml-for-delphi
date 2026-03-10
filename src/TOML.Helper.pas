@@ -5,9 +5,12 @@ Provides a simpler and more secure read/write API.
 
 Main functions:
 - TTOMLTableHelper: Reading (GetXxx / TryGetXxx) and writing (SetXxx) tables.
-Chained calls (Put), file operations (LoadFromFile / SaveToFile),
-Key management (HasKey / GetKeys / Remove / Clear / Clone / Count)
-- TTOMLArrayHelper: Reads array elements (GetXxx) and appends them (AddXxx).
+  Chained calls (Put), file operations (LoadFromFile / SaveToFile),
+  Key management (HasKey / GetKeys / Remove / Clear / Clone / Count),
+  File and String Operations (ToString / SaveToFile / LoadFromFile),
+  About JSON (ToJSON / SaveToJSONFile / LoadFromJson / LoadFromJsonFile)
+- TTOMLArrayHelper: Reads array elements (GetXxx / TryGetXxx) and appends/insert/writing
+  them (AddXxx / InsertXxx / SetXxx).
 Traversal (ForEachTable), removal (RemoveAt / Clear), etc.
 
 Global factory function:
@@ -290,34 +293,31 @@ type
     { == Set method == }
 
     {Modify the string value at the specified index}
-    function SetStr(Index: Integer; const Value: string; FreeOld: Boolean = True): Boolean;
+    function SetStr(Index: Integer; const Value: string): Boolean;
 
     { Modify the integer value at the specified index }
-    function SetInt(Index: Integer; const Value: Int64; FreeOld: Boolean = True): Boolean;
+    function SetInt(Index: Integer; const Value: Int64): Boolean;
 
     { Modify the float value at the specified index }
-    function SetFloat(Index: Integer; const Value: Double; FreeOld: Boolean = True): Boolean;
+    function SetFloat(Index: Integer; const Value: Double): Boolean;
 
     { Modify the original text of the floating-point number at the specified index. }
-    function SetFloatValue(Index: Integer; const RawValue: string; FreeOld: Boolean = True): Boolean;
+    function SetFloatValue(Index: Integer; const RawValue: string): Boolean;
 
     { Modify the boolean value at the specified index }
-    function SetBool(Index: Integer; const Value: Boolean; FreeOld: Boolean = True): Boolean;
+    function SetBool(Index: Integer; const Value: Boolean): Boolean;
 
     { Modify the datetime value at the specified index }
-    function SetDateTime(Index: Integer; const Value: TDateTime; FreeOld: Boolean = True): Boolean;
+    function SetDateTime(Index: Integer; const Value: TDateTime): Boolean;
 
     { Modify the original text of the datetime at the specified index. }
-    function SetDateTimeValue(Index: Integer; const RawValue: string; FreeOld: Boolean = True): Boolean;
+    function SetDateTimeValue(Index: Integer; const RawValue: string): Boolean;
 
-    { Modify the array at the specified index (ownership transfer)
-      @param FreeOld: When True, the old value is released;
-                      when False, the caller must manage it themselves.
-      @returns True Success; False Index out of bounds or Value is nil }
-    function SetArray(Index: Integer; Value: TTOMLArray; FreeOld: Boolean = True): Boolean;
+    { Modify the array at the specified index }
+    function SetArray(Index: Integer; Value: TTOMLArray): Boolean;
 
-    { Modify the table at the specified index (ownership transfer)） }
-    function SetTable(Index: Integer; Value: TTOMLTable; FreeOld: Boolean = True): Boolean;
+    { Modify the table at the specified index }
+    function SetTable(Index: Integer; Value: TTOMLTable): Boolean;
 
     { ===== Insert methods ===== }
 
@@ -1314,6 +1314,80 @@ begin
   end;
 end;
 
+{ ===== TTOMLTableHelper：Implement the interconversion method with JSON ===== }
+
+function TTOMLTableHelper.ToJSON(APretty: Boolean; AIndentSize: Integer): string;
+begin
+  try
+    Result := TOMLToJSON(Self, APretty, AIndentSize);
+  except
+    Result := '';
+  end;
+end;
+
+function TTOMLTableHelper.LoadFromJSON(const AJSON: string; ANullAsEmptyString: Boolean): Boolean;
+var
+  Parsed: TTOMLTable;
+  Pair: TPair<string, TTOMLValue>;
+begin
+  Result := False;
+  try
+    Parsed := JSONToTOML(AJSON, ANullAsEmptyString);
+    try
+      Self.Clear(True);
+      for Pair in Parsed.Items do
+        Self.Add(Pair.Key, Pair.Value);
+      Parsed.Items.Clear;
+    finally
+      Parsed.Free;
+    end;
+    Result := True;
+  except
+    // Return False if an error occurs，Self has been cleared, so it remains an empty table.
+  end;
+end;
+
+function TTOMLTableHelper.SaveToJSONFile(const FileName: string; APretty: Boolean; ABOM: Boolean): Boolean;
+var
+  JSON: string;
+  SL: TStringList;
+begin
+  Result := False;
+  try
+    JSON := TOMLToJSON(Self, APretty);
+    SL := TStringList.Create;
+    try
+      SL.Text := JSON;
+      SL.SaveToFile(FileName, TEncoding.UTF8);
+      Result := True;
+    finally
+      SL.Free;
+    end;
+  except
+    // Return False if an error occurs
+  end;
+end;
+
+function TTOMLTableHelper.LoadFromJSONFile(const FileName: string; ANullAsEmptyString: Boolean): Boolean;
+var
+  SL: TStringList;
+  JSON: string;
+begin
+  Result := False;
+  try
+    SL := TStringList.Create;
+    try
+      SL.LoadFromFile(FileName, TEncoding.UTF8);
+      JSON := SL.Text;
+    finally
+      SL.Free;
+    end;
+    Result := LoadFromJSON(JSON, ANullAsEmptyString);
+  except
+    // Return False if an error occurs
+  end;
+end;
+
 { ===== TTOMLArrayHelper —— Read method implementation ===== }
 
 function TTOMLArrayHelper.GetStr(Index: Integer; const DefaultValue: string): string;
@@ -1665,51 +1739,6 @@ begin
   end;
 end;
 
-procedure TTOMLArrayHelper.ForEachTable(Proc: TProc<TTOMLTable>);
-var
-  i: Integer;
-  Item: TTOMLValue;
-begin
-  if not Assigned(Proc) then
-    Exit;
-  try
-    for i := 0 to Self.Count - 1 do
-    begin
-      Item := Self.GetItem(i);
-      if Assigned(Item) and (Item is TTOMLTable) then
-        Proc(TTOMLTable(Item));
-    end;
-  except
-    // Silence on failure
-  end;
-end;
-
-procedure TTOMLArrayHelper.ForEachTable(Callback: TFunc<Integer, TTOMLTable, Boolean>; SkipNonTables: Boolean);
-var
-  I: Integer;
-  Item: TTOMLValue;
-  ContinueIteration: Boolean;
-begin
-  if not Assigned(Callback) then
-    Exit;
-  try
-    for I := 0 to Self.Count - 1 do
-    begin
-      Item := Self.Items[I];
-      if Assigned(Item) and (Item is TTOMLTable) then
-      begin
-        ContinueIteration := Callback(I, TTOMLTable(Item));
-        if not ContinueIteration then
-          Break;
-      end
-      else if not SkipNonTables then
-        Break;
-    end;
-  except
-    // Silence on failure
-  end;
-end;
-
 function TTOMLArrayHelper.TryGetItem(Index: Integer; out Value: TTOMLValue): Boolean;
 begin
   try
@@ -1906,33 +1935,47 @@ begin
   end;
 end;
 
-function TTOMLArrayHelper.SetStr(Index: Integer; const Value: string; FreeOld: Boolean): Boolean;
+function TTOMLArrayHelper.SetStr(Index: Integer; const Value: string): Boolean;
 var
   OldItem: TTOMLValue;
   NewValue: TTOMLString;
 begin
   Result := False;
   try
+    // 1. 检查索引有效性
     if (Index < 0) or (Index >= Self.Count) then
       Exit;
 
-    OldItem := Self.Items[Index];
+    // 2. 创建新值对象（可能失败，但此时还没修改数组）
     NewValue := TTOMLString.Create(Value);
+
+    // 3. 保存旧值引用
+    OldItem := Self.Items[Index];
+
+    // 4. 尝试替换（通常不会失败）
     try
       Self.Items[Index] := NewValue;
-      if FreeOld and Assigned(OldItem) then
+      // 5. 替换成功，释放旧值
+      if Assigned(OldItem) then
         OldItem.Free;
       Result := True;
     except
+      // 6. 替换失败，恢复旧值，释放新值
       NewValue.Free;
-      Self.Items[Index] := OldItem;
+      Self.Items[Index] := OldItem;  // 恢复
+      // 不重新抛出异常，返回 False 即可
     end;
   except
+    // 外层异常处理：创建对象失败等
     Result := False;
   end;
 end;
 
-function TTOMLArrayHelper.SetInt(Index: Integer; const Value: Int64; FreeOld: Boolean): Boolean;
+
+{ ===== SetXxx 方法实现 ===== }
+
+
+function TTOMLArrayHelper.SetInt(Index: Integer; const Value: Int64): Boolean;
 var
   OldItem: TTOMLValue;
   NewValue: TTOMLInteger;
@@ -1942,11 +1985,12 @@ begin
     if (Index < 0) or (Index >= Self.Count) then
       Exit;
 
-    OldItem := Self.Items[Index];
     NewValue := TTOMLInteger.Create(Value);
+    OldItem := Self.Items[Index];
+
     try
       Self.Items[Index] := NewValue;
-      if FreeOld and Assigned(OldItem) then
+      if Assigned(OldItem) then
         OldItem.Free;
       Result := True;
     except
@@ -1958,7 +2002,7 @@ begin
   end;
 end;
 
-function TTOMLArrayHelper.SetFloat(Index: Integer; const Value: Double; FreeOld: Boolean): Boolean;
+function TTOMLArrayHelper.SetFloat(Index: Integer; const Value: Double): Boolean;
 var
   OldItem: TTOMLValue;
   NewValue: TTOMLFloat;
@@ -1968,11 +2012,12 @@ begin
     if (Index < 0) or (Index >= Self.Count) then
       Exit;
 
-    OldItem := Self.Items[Index];
     NewValue := TTOMLFloat.Create(Value);
+    OldItem := Self.Items[Index];
+
     try
       Self.Items[Index] := NewValue;
-      if FreeOld and Assigned(OldItem) then
+      if Assigned(OldItem) then
         OldItem.Free;
       Result := True;
     except
@@ -1984,7 +2029,7 @@ begin
   end;
 end;
 
-function TTOMLArrayHelper.SetFloatValue(Index: Integer; const RawValue: string; FreeOld: Boolean): Boolean;
+function TTOMLArrayHelper.SetFloatValue(Index: Integer; const RawValue: string): Boolean;
 var
   OldItem: TTOMLValue;
   Temp: TTOMLTable;
@@ -1996,20 +2041,21 @@ begin
     if (Index < 0) or (Index >= Self.Count) then
       Exit;
 
-    OldItem := Self.Items[Index];
-
+    // 解析并创建新值（这步最可能失败）
     Temp := ParseTOMLString('__f__ = ' + RawValue);
     try
       if not Temp.TryGetValue('__f__', RawVal) or not (RawVal is TTOMLFloat) then
-        Exit;
+        Exit;  // 解析失败，直接返回，数组未修改
       NewValue := TTOMLFloat.Create(TTOMLFloat(RawVal).Value, RawValue);
     finally
       Temp.Free;
     end;
 
+    // 新值创建成功，执行替换
+    OldItem := Self.Items[Index];
     try
       Self.Items[Index] := NewValue;
-      if FreeOld and Assigned(OldItem) then
+      if Assigned(OldItem) then
         OldItem.Free;
       Result := True;
     except
@@ -2021,7 +2067,7 @@ begin
   end;
 end;
 
-function TTOMLArrayHelper.SetBool(Index: Integer; const Value: Boolean; FreeOld: Boolean): Boolean;
+function TTOMLArrayHelper.SetBool(Index: Integer; const Value: Boolean): Boolean;
 var
   OldItem: TTOMLValue;
   NewValue: TTOMLBoolean;
@@ -2031,11 +2077,12 @@ begin
     if (Index < 0) or (Index >= Self.Count) then
       Exit;
 
-    OldItem := Self.Items[Index];
     NewValue := TTOMLBoolean.Create(Value);
+    OldItem := Self.Items[Index];
+
     try
       Self.Items[Index] := NewValue;
-      if FreeOld and Assigned(OldItem) then
+      if Assigned(OldItem) then
         OldItem.Free;
       Result := True;
     except
@@ -2047,7 +2094,7 @@ begin
   end;
 end;
 
-function TTOMLArrayHelper.SetDateTime(Index: Integer; const Value: TDateTime; FreeOld: Boolean): Boolean;
+function TTOMLArrayHelper.SetDateTime(Index: Integer; const Value: TDateTime): Boolean;
 var
   OldItem: TTOMLValue;
   NewValue: TTOMLDateTime;
@@ -2057,11 +2104,12 @@ begin
     if (Index < 0) or (Index >= Self.Count) then
       Exit;
 
-    OldItem := Self.Items[Index];
     NewValue := TTOMLDateTime.Create(Value);
+    OldItem := Self.Items[Index];
+
     try
       Self.Items[Index] := NewValue;
-      if FreeOld and Assigned(OldItem) then
+      if Assigned(OldItem) then
         OldItem.Free;
       Result := True;
     except
@@ -2073,7 +2121,7 @@ begin
   end;
 end;
 
-function TTOMLArrayHelper.SetDateTimeValue(Index: Integer; const RawValue: string; FreeOld: Boolean): Boolean;
+function TTOMLArrayHelper.SetDateTimeValue(Index: Integer; const RawValue: string): Boolean;
 var
   OldItem: TTOMLValue;
   Temp: TTOMLTable;
@@ -2085,21 +2133,22 @@ begin
     if (Index < 0) or (Index >= Self.Count) then
       Exit;
 
-    OldItem := Self.Items[Index];
-
+    // 解析并创建新值
     Temp := ParseTOMLString('__dt__ = ' + RawValue);
     try
       if not Temp.TryGetValue('__dt__', RawVal) or not (RawVal is TTOMLDateTime) then
-        Exit;
-      NewValue := TTOMLDateTime.Create(TTOMLDateTime(RawVal).Value, RawValue, TTOMLDateTime(RawVal).Kind,
-        TTOMLDateTime(RawVal).TimeZoneOffset);
+        Exit;  // 解析失败，直接返回
+      NewValue := TTOMLDateTime.Create(TTOMLDateTime(RawVal).Value, RawValue,
+        TTOMLDateTime(RawVal).Kind, TTOMLDateTime(RawVal).TimeZoneOffset);
     finally
       Temp.Free;
     end;
 
+    // 执行替换
+    OldItem := Self.Items[Index];
     try
       Self.Items[Index] := NewValue;
-      if FreeOld and Assigned(OldItem) then
+      if Assigned(OldItem) then
         OldItem.Free;
       Result := True;
     except
@@ -2111,13 +2160,14 @@ begin
   end;
 end;
 
-function TTOMLArrayHelper.SetArray(Index: Integer; Value: TTOMLArray; FreeOld: Boolean): Boolean;
+function TTOMLArrayHelper.SetArray(Index: Integer; Value: TTOMLArray): Boolean;
 var
   OldItem: TTOMLValue;
 begin
   Result := False;
   if not Assigned(Value) then
     Exit;
+
   try
     if (Index < 0) or (Index >= Self.Count) then
       Exit;
@@ -2125,10 +2175,12 @@ begin
     OldItem := Self.Items[Index];
     try
       Self.Items[Index] := Value;
-      if FreeOld and Assigned(OldItem) then
+      if Assigned(OldItem) then
         OldItem.Free;
       Result := True;
     except
+      // 恢复旧值
+      // 注意：Value 的所有权没有转移，调用者仍需负责释放
       Self.Items[Index] := OldItem;
     end;
   except
@@ -2136,13 +2188,14 @@ begin
   end;
 end;
 
-function TTOMLArrayHelper.SetTable(Index: Integer; Value: TTOMLTable; FreeOld: Boolean): Boolean;
+function TTOMLArrayHelper.SetTable(Index: Integer; Value: TTOMLTable): Boolean;
 var
   OldItem: TTOMLValue;
 begin
   Result := False;
   if not Assigned(Value) then
     Exit;
+
   try
     if (Index < 0) or (Index >= Self.Count) then
       Exit;
@@ -2150,16 +2203,21 @@ begin
     OldItem := Self.Items[Index];
     try
       Self.Items[Index] := Value;
-      if FreeOld and Assigned(OldItem) then
+      if Assigned(OldItem) then
         OldItem.Free;
       Result := True;
     except
+      // 恢复旧值
+      // 注意：Value 的所有权没有转移，调用者仍需负责释放
       Self.Items[Index] := OldItem;
     end;
   except
     Result := False;
   end;
 end;
+
+
+
 
 
 { ===== TTOMLArrayHelper —— InsertXxx method implementation ===== }
@@ -2373,17 +2431,6 @@ begin
 end;
 
 
-{ ===== TTOMLArrayHelper —— Serialization implementation ===== }
-
-function TTOMLArrayHelper.toString: string;
-begin
-  try
-    Result := TOML.Serializer.SerializeTOML(Self);
-  except
-    Result := '';
-  end;
-end;
-
 { ===== TTOMLArrayHelper —— Tool method implementation ===== }
 
 procedure TTOMLArrayHelper.Clear(FreeItems: Boolean);
@@ -2419,143 +2466,59 @@ begin
   end;
 end;
 
-//procedure TTOMLArrayHelper.ForEachTable(Proc: TProc<TTOMLTable>);
-//var
-//  I: Integer;
-//  Item: TTOMLValue;
-//begin
-//  if not Assigned(Proc) then
-//    Exit;
-//  try
-//    for I := 0 to Self.Count - 1 do
-//    begin
-//      Item := Self.Items[I];
-//      if Assigned(Item) and (Item is TTOMLTable) then
-//        Proc(TTOMLTable(Item));
-//    end;
-//  except
-//    // Silence on failure
-//  end;
-//end;
+procedure TTOMLArrayHelper.ForEachTable(Proc: TProc<TTOMLTable>);
+var
+  i: Integer;
+  Item: TTOMLValue;
+begin
+  if not Assigned(Proc) then
+    Exit;
+  try
+    for i := 0 to Self.Count - 1 do
+    begin
+      Item := Self.GetItem(i);
+      if Assigned(Item) and (Item is TTOMLTable) then
+        Proc(TTOMLTable(Item));
+    end;
+  except
+    // Silence on failure
+  end;
+end;
 
-//procedure TTOMLArrayHelper.ForEachTable(Proc: TProc<TTOMLTable>);
-//var
-//  I: Integer;
-//  Item: TTOMLValue;
-//begin
-//  if not Assigned(Proc) then
-//    Exit;
-//  try
-//    for I := 0 to Self.Count - 1 do
-//    begin
-//      Item := Self.Items[I];
-//      if Assigned(Item) and (Item is TTOMLTable) then
-//        Proc(TTOMLTable(Item));
-//    end;
-//  except
-//    // Silence on failure
-//  end;
-//end;
+procedure TTOMLArrayHelper.ForEachTable(Callback: TFunc<Integer, TTOMLTable, Boolean>; SkipNonTables: Boolean);
+var
+  I: Integer;
+  Item: TTOMLValue;
+  ContinueIteration: Boolean;
+begin
+  if not Assigned(Callback) then
+    Exit;
+  try
+    for I := 0 to Self.Count - 1 do
+    begin
+      Item := Self.Items[I];
+      if Assigned(Item) and (Item is TTOMLTable) then
+      begin
+        ContinueIteration := Callback(I, TTOMLTable(Item));
+        if not ContinueIteration then
+          Break;
+      end
+      else if not SkipNonTables then
+        Break;
+    end;
+  except
+    // Silence on failure
+  end;
+end;
 
-//procedure TTOMLArrayHelper.ForEachTable(Callback: TFunc<Integer, TTOMLTable, Boolean>; SkipNonTables: Boolean);
-//var
-//  I: Integer;
-//  Item: TTOMLValue;
-//  ContinueIteration: Boolean;
-//begin
-//  if not Assigned(Callback) then
-//    Exit;
-//  try
-//    for I := 0 to Self.Count - 1 do
-//    begin
-//      Item := Self.Items[I];
-//      if Assigned(Item) and (Item is TTOMLTable) then
-//      begin
-//        ContinueIteration := Callback(I, TTOMLTable(Item));
-//        if not ContinueIteration then
-//          Break;
-//      end
-//      else if not SkipNonTables then
-//        Break;
-//    end;
-//  except
-//    // Silence on failure
-//  end;
-//end;
+{ ===== TTOMLArrayHelper —— Serialization implementation ===== }
 
-
-
-{ ===== TTOMLTableHelper：Implement the interconversion method with JSON ===== }
-
-function TTOMLTableHelper.ToJSON(APretty: Boolean; AIndentSize: Integer): string;
+function TTOMLArrayHelper.toString: string;
 begin
   try
-    Result := TOMLToJSON(Self, APretty, AIndentSize);
+    Result := TOML.Serializer.SerializeTOML(Self);
   except
     Result := '';
-  end;
-end;
-
-function TTOMLTableHelper.LoadFromJSON(const AJSON: string; ANullAsEmptyString: Boolean): Boolean;
-var
-  Parsed: TTOMLTable;
-  Pair: TPair<string, TTOMLValue>;
-begin
-  Result := False;
-  try
-    Parsed := JSONToTOML(AJSON, ANullAsEmptyString);
-    try
-      Self.Clear(True);
-      for Pair in Parsed.Items do
-        Self.Add(Pair.Key, Pair.Value);
-      Parsed.Items.Clear;
-    finally
-      Parsed.Free;
-    end;
-    Result := True;
-  except
-    // Return False if an error occurs，Self has been cleared, so it remains an empty table.
-  end;
-end;
-
-function TTOMLTableHelper.SaveToJSONFile(const FileName: string; APretty: Boolean; ABOM: Boolean): Boolean;
-var
-  JSON: string;
-  SL: TStringList;
-begin
-  Result := False;
-  try
-    JSON := TOMLToJSON(Self, APretty);
-    SL := TStringList.Create;
-    try
-      SL.Text := JSON;
-      SL.SaveToFile(FileName, TEncoding.UTF8);
-      Result := True;
-    finally
-      SL.Free;
-    end;
-  except
-    // Return False if an error occurs
-  end;
-end;
-
-function TTOMLTableHelper.LoadFromJSONFile(const FileName: string; ANullAsEmptyString: Boolean): Boolean;
-var
-  SL: TStringList;
-  JSON: string;
-begin
-  Result := False;
-  try
-    SL := TStringList.Create;
-    try
-      SL.LoadFromFile(FileName, TEncoding.UTF8);
-      JSON := SL.Text;
-    finally
-      SL.Free;
-    end;
-    Result := LoadFromJSON(JSON, ANullAsEmptyString);
-  except
-    // Return False if an error occurs
   end;
 end;
 
