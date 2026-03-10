@@ -45,6 +45,7 @@ type
 
   TTOMLTable = TOML.Types.TTOMLTable;
   { Re-export exception types }
+
   ETOMLException = TOML.Types.ETOMLException;
 
   ETOMLParserException = TOML.Types.ETOMLParserException;
@@ -56,34 +57,41 @@ type
   @param AValue The string value to store
   @returns A new TTOMLString instance that must be freed by the caller
   @note The caller is responsible for freeing the returned instance }
+
 function TOMLString(const AValue: string): TTOMLString;
 { Creates a new TOML integer value
   @param AValue The 64-bit integer value to store
   @returns A new TTOMLInteger instance that must be freed by the caller
   @note The caller is responsible for freeing the returned instance }
+
 function TOMLInteger(const AValue: Int64): TTOMLInteger;
 { Creates a new TOML float value
   @param AValue The double-precision floating point value to store
   @returns A new TTOMLFloat instance that must be freed by the caller
   @note The caller is responsible for freeing the returned instance }
+
 function TOMLFloat(const AValue: Double): TTOMLFloat;
 { Creates a new TOML boolean value
   @param AValue The boolean value to store
   @returns A new TTOMLBoolean instance that must be freed by the caller
   @note The caller is responsible for freeing the returned instance }
+
 function TOMLBoolean(const AValue: Boolean): TTOMLBoolean;
 { Creates a new TOML datetime value
   @param AValue The TDateTime value to store
   @returns A new TTOMLDateTime instance that must be freed by the caller
   @note The caller is responsible for freeing the returned instance }
+
 function TOMLDateTime(const AValue: TDateTime): TTOMLDateTime;
 { Creates a new empty TOML array
   @returns A new empty TTOMLArray instance that must be freed by the caller
   @note The caller is responsible for freeing the returned instance and any values added to it }
+
 function TOMLArray: TTOMLArray;
 { Creates a new empty TOML table
   @returns A new empty TTOMLTable instance that must be freed by the caller
   @note The caller is responsible for freeing the returned instance and any values added to it }
+
 function TOMLTable: TTOMLTable;
 { Parsing functions }
 
@@ -92,6 +100,7 @@ function TOMLTable: TTOMLTable;
   @returns A new TTOMLTable containing the parsed data
   @raises ETOMLParserException if the input is invalid TOML
   @note The caller is responsible for freeing the returned table and all its contents }
+
 function ParseTOML(const ATOML: string): TTOMLTable;
 { Parses a TOML file into a table
   @param AFileName The path to the TOML file to parse
@@ -99,21 +108,32 @@ function ParseTOML(const ATOML: string): TTOMLTable;
   @raises ETOMLParserException if the input is invalid TOML
   @raises EFileStreamError if the file cannot be opened or read
   @note The caller is responsible for freeing the returned table and all its contents }
+
 function ParseTOMLFromFile(const AFileName: string): TTOMLTable;
 { Serialization functions }
 
 { Serializes a TOML value to a string
   @param AValue The TOML value to serialize
+  @param AWrapWidth Maximum column width for wrapping long/multi-line strings.
+         Strings that contain newlines are written as TOML multi-line basic
+         strings ("""). Strings without newlines but longer than AWrapWidth are
+         wrapped with a line-ending backslash continuation. Pass 0 (default)
+         to keep the original single-line behaviour.
   @returns A string containing the serialized TOML data
   @raises ETOMLSerializerException if the value cannot be serialized }
-function SerializeTOML(const AValue: TTOMLValue): string;
+
+function SerializeTOML(const AValue: TTOMLValue; AWrapWidth: Integer = 0): string;
 { Serializes a TOML value to a file
   @param AValue The TOML value to serialize
   @param AFileName The path to the output file
+  @param BOM Whether to write a UTF-8 BOM (default True)
+  @param AWrapWidth Maximum column width for wrapping (0 = disabled, default)
   @returns True if successful, False otherwise
   @raises ETOMLSerializerException if the value cannot be serialized
   @raises EFileStreamError if the file cannot be written }
-function SerializeTOMLToFile(const AValue: TTOMLValue; const AFileName: string; BOM: Boolean = True): Boolean;
+
+function SerializeTOMLToFile(const AValue: TTOMLValue; const AFileName: string; BOM: Boolean = True;
+  AWrapWidth: Integer = 0): Boolean;
 
 implementation
 { Helper functions implementation }
@@ -165,15 +185,15 @@ begin
 end;
 { Serialization functions implementation }
 
-function SerializeTOML(const AValue: TTOMLValue): string;
+function SerializeTOML(const AValue: TTOMLValue; AWrapWidth: Integer = 0): string;
 begin
-  Result := TOML.Serializer.SerializeTOML(AValue);
+  Result := TOML.Serializer.SerializeTOML(AValue, AWrapWidth);
 end;
 
-function SerializeTOMLToFile(const AValue: TTOMLValue; const AFileName: string; BOM: Boolean = True): Boolean;
+function SerializeTOMLToFile(const AValue: TTOMLValue; const AFileName: string; BOM: Boolean = True;
+  AWrapWidth: Integer = 0): Boolean;
 begin
-  Result := TOML.Serializer.SerializeTOMLToFile(AValue, AFileName, BOM);
+  Result := TOML.Serializer.SerializeTOMLToFile(AValue, AFileName, BOM, AWrapWidth);
 end;
 
 end.
-
