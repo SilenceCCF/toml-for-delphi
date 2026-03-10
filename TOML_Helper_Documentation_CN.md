@@ -23,7 +23,8 @@
 
 ### 1. 类型安全的读取方法
 
-所有读取方法都提供默认值支持，确保程序不会因为键不存在而崩溃。
+所有的 get 类读取方法都提供默认值支持，确保程序不会因为键不存在而崩溃。
+
 
 #### GetStr - 字符串读取
 
@@ -119,7 +120,7 @@ timestamp := Config.GetDateTimeValue('created_at', '');
 
 ---
 
-### 2. TryGet 安全访问方法（新增）
+### 2. TryGet 安全访问方法
 
 所有 TryGet 方法提供异常安全的访问方式，通过返回值指示成功或失败。
 
@@ -178,7 +179,7 @@ end;
 
 ---
 
-### 3. 覆盖保护的写入方法（新增）
+### 3. 覆盖保护的写入方法
 
 所有 Set 方法都支持覆盖控制，可以防止意外覆盖已存在的配置项。
 
@@ -357,9 +358,8 @@ if Config.LoadFromString(TOML) then
 ```
 
 #### ToString - 序列化为字符串
-
 ```pascal
-function ToString: string; reintroduce;
+function ToString: string; 
 ```
 
 **示例：**
@@ -370,10 +370,44 @@ WriteLn(TOML);
 // title = "MyApp"
 // version = "1.0"
 ```
+---
+### 6. TOML 与 JSON 格式转换
+#### ToJSON - 转换为 JSON 字符串
+```pascal
+ToJSON(APretty: Boolean; AIndentSize: Integer): string;
+```
+**参数：**
+- `APretty` - 输出带缩进的美观格式（默认 True）
+- `AIndentSize` - 每级缩进的空格数（默认 2）
 
+#### SaveToJSONFile - 保存为 JSON 格式文件
+```pascal
+SaveToJSONFile(const FileName: string; APretty: Boolean; ABOM: Boolean): Boolean;
+```
+**参数：**
+- `FileName` - 文件路径
+- `APretty` - 输出带缩进的美观格式（默认 True）
+- `ABOM` - 是否写入 UTF-8 BOM（默认 False，JSON 通常无 BOM）
+
+#### LoadFromJSON - 从 JSON 字符串读取
+```pascal
+LoadFromJSON(const AJSON: string; ANullAsEmptyString: Boolean): Boolean;
+```
+**参数：**
+- `AJSON` - JSON 格式字符串
+- `ANullAsEmptyString` - True 时将 JSON null 转为空字符串，False 时忽略 null 键（默认 False）
+
+#### LoadFromJSONFile 从 JSON 格式文件读取
+```pascal
+LoadFromJSONFile(const FileName: string; ANullAsEmptyString: Boolean): Boolean;
+```
+- `Filename` - 文件路径
+- `ANullAsEmptyString` - True 时将 JSON null 转为空字符串，False 时忽略 null 键（默认 False）
+
+#### TOML.JSON 单元中还有 TOMLFileToJSONFile、JSONFileToTOMLFile 等函数。
 ---
 
-### 6. 内存管理增强
+### 7. 内存管理增强
 
 #### Remove - 删除键
 
@@ -414,24 +448,9 @@ Config.Clear(True);
 // 清空但保留对象
 Config.Clear(False);
 ```
-
-#### RemoveAt - 删除数组元素
-
-```pascal
-function RemoveAt(Index: Integer; FreeItem: Boolean = True): Boolean;
-```
-
-**示例：**
-```pascal
-// 删除数组中的第3个元素
-Arr := Config.GetArray('items');
-if Arr.RemoveAt(2, True) then
-  WriteLn('元素已删除');
-```
-
 ---
 
-### 7. 数组操作辅助方法
+### 7. 数组操作辅助方法或函数
 
 #### AddXXX - 链式添加元素
 
@@ -446,11 +465,11 @@ Arr.AddStr('apple')
 Config.SetArray('fruits', Arr);
 ```
 
-**可用方法：**
+**可用函数：**
 - `AddStr(Value)` - 添加字符串
 - `AddInt(Value)` - 添加整数
 - `AddFloat(Value)` - 添加浮点数
-- `AddFloatValue(value)' - 添加高精度浮点数
+- `AddFloatValue(value)` - 添加高精度浮点数
 - `AddBool(Value)` - 添加布尔值
 - `AddDateTime(Value)` - 添加日期时间
 - `AddDateTimeValue(value)` - 添加高精度日期时间
@@ -465,11 +484,150 @@ fruit := Arr.GetStr(0, 'unknown');
 count := Arr.GetInt(1, 0);
 enabled := Arr.GetBool(2, False);
 ```
+**可用函数：**
+- `GetStr(Index,DefaultValue)` - 获取字符串
+- `GetInt(Index,DefaultValue)` - 获取整数
+- `GetFloat(Index,DefaultValue)` - 获取浮点数
+- `GetFloatValue(Index,DefaultValue)` - 获取高精度浮点数
+- `GetBool(Index,DefaultValue)` - 获取布尔值
+- `GetDateTime(Index,DefaultValue)` - 获取日期时间
+- `GetDateTimeValue(Index,DefaultValue)` - 获取高精度日期时间
+- `GetTable(Index,DefaultValue)` - 获取表
+- `GetArray(Index,DefaultValue)` - 获取数组
+  
+#### TryGetXXX - 类型安全访问
+```pascal
+if Arr.TryGetStr(1,str) then
+showmessage(str);
+```
+**可用函数：**
+
+- `TryGetStr(Index,Value)` - 获取字符串
+- `TryGetInt(Index,Value)` - 获取整数
+- `TryGetFloat(Index,Value)` - 获取浮点数
+- `TryGetFloatValue(Index,Value)` - 获取高精度浮点数
+- `TryGetBool(Index,Value)` - 获取布尔值
+- `TryGetDateTime(Index,Value)` - 获取日期时间
+- `TryGetDateTimeValue(Index,Value)` - 获取高精度日期时间
+- `TryGetTable(Index,Value)` - 获取表
+- `TryGetArray(Index,Value)` - 获取数组
+
+#### SetXXX - 修改数组成员
+```pascal
+  str := 'tomato';
+  if Arr.SetStr(1,str) then
+  showmessage(Arr.GetStr(1));
+```
+
+**可用函数：**
+- `SetStr(Index,Value)` - 修改字符串
+- `SetInt(Index,Value)` - 修改整数
+- `SetFloat(Index,Value)` - 修改浮点数
+- `SetFloatValue(Index,Value)` - 修改高精度浮点数
+- `SetBool(Index,Value)` - 修改布尔值
+- `SetDateTime(Index,Value)` - 修改日期时间
+- `SetDateTimeValue(Index,Value)` - 修改高精度日期时间
+- `SetTable(Index,Value)` - 修改表
+- `SetArray(Index,Value)` - 修改数组
+
+#### InsertXXX - 插入数组成员
+```pascal
+  str := 'tomato';
+  if InsertStr.SetStr(1,str) then
+  showmessage(Arr.GetStr(1));
+```
+
+**可用函数：**
+- `InsertStr(Index,Value)` - 插入字符串
+- `InsertInt(Index,Value)` - 插入整数
+- `InsertFloat(Index,Value)` - 插入浮点数
+- `InsertFloatValue(Index,Value)` - 插入高精度浮点数
+- `InsertBool(Index,Value)` - 插入布尔值
+- `InsertDateTime(Index,Value)` - 插入日期时间
+- `InsertDateTimeValue(Index,Value)` - 插入高精度日期时间
+- `InsertTable(Index,Value)` - 插入表
+- `InsertArray(Index,Value)` - 插入数组
+- 
+#### RemoveAt - 删除数组成员
+
+```pascal
+function RemoveAt(Index: Integer; FreeItem: Boolean = True): Boolean;
+```
+
+**示例：**
+```pascal
+// 删除数组中的第3个元素
+Arr := Config.GetArray('items');
+if Arr.RemoveAt(2, True) then
+  WriteLn('元素已删除');
+```
+
 ### 8. 其它
+#### ToString - 序列化为字符串
+```pascal
+function ToString: string; 
+```
 #### clone - 克隆表
-
+```pascal
 table2 :=table1.clone;
-
+```
+#### ForEachTable - 循环表数组
+```pascal
+ForEachTable(Proc: TProc<TTOMLTable>);
+ForEachTable(Callback: TFunc<Integer, TTOMLTable, Boolean>; SkipNonTables: Boolean = True);
+```
+示例：
+- 遍历数组方式一
+```
+parameters.ForEachTable(
+  procedure(param: TTOMLTable)
+    begin
+      showmessage(param.GetStr('name'));
+    end
+ );
+```
+- 遍历数组方式二
+```pascal
+    procedure ProcessParameter(param: TTOMLTable);
+      begin
+        showmessage(param.GetStr('name'));
+      end;    
+    parameters.ForEachTable(ProcessParameter);
+```
+- 增强版 ForEachTable
+```pascal
+var
+  Root: TTOMLTable;
+  UsersArray: TTOMLArray;
+  TargetUser: TTOMLTable;
+begin
+  Root := LoadTOML('users.toml');
+  UsersArray := Root.GetArray('users');
+  TargetUser := nil;
+  
+  // 使用改进版本：支持提前退出
+  UsersArray.ForEachTable(
+    function(Index: Integer; User: TTOMLTable): Boolean
+    begin
+      if User.GetStr('username') = 'bob' then
+      begin
+        TargetUser := User;
+        Result := False;  // 找到了，停止遍历
+      end
+      else
+        Result := True;  // 继续查找
+    end,
+    True  // 跳过非表元素
+  );
+  
+  if Assigned(TargetUser) then
+    WriteLn('Found user: ' + TargetUser.GetStr('email'))
+  else
+    WriteLn('User not found');
+    
+  Root.Free;
+end;
+```    
 ## 📚 完整使用示例
 
 ### 示例 1: 应用配置管理
@@ -778,10 +936,16 @@ var Timestamp := Config.GetDateTimeValue('log.timestamp', '');
 | 方法 | 功能 | 返回 Boolean |
 |------|------|-------------|
 | `LoadFromFile` | 从文件加载 | ✓ |
-| `SaveToFile` | 保存到文件 | ✓ |
+| `LoadFromJSONFile` | 从 JSON 文件加载 | ✓ |
+| `SaveToFile` | 保存为文件 | ✓ |
+|`SaveToJSONFile`|保存为 JSON 文件|✓ |
 | `LoadFromString` | 从字符串解析 | ✓ |
-| `ToString` | 序列化为字符串 | - |
-
+| `LoadFromJSONString` | 从 JSON 字符串解析 | ✓ |
+| `ToString` | 序列化为 TOML 字符串 | - |
+| `ToJSONString` | 序列化为 JSON 字符串 | - |
+| `TOMLFileToJSONFile` | TOML 文件转换为 JSON 文件 | - |
+| `JSONFileToTOMLFile` | JSON 文件转换为 TOML 文件 | - |
+* 备注：TOMLFileToJSONFile 和 JSONFileToTOMLFile 方法在 TOML.JSON.pas 单元中
 ---
 
 ## ⚡ 性能提示
