@@ -7,7 +7,7 @@
 ![Version](https://img.shields.io/badge/Version-2026.03.11-blue.svg)
 
 A unit for parsing the [TOML](https://toml.io/) version 1.1.0 format, rewritten from [ikelaiah's TOML Parser for Free Pascal](https://github.com/ikelaiah/toml-fp) version 1.0.3, compatible with Delphi 2005 and later, with significant revisions and enhancements.
-1. Fully supports the [TOML V1.1.0](https://toml.io/en/v1.1.0) specification, and has passed all 894 tests (V 1.1.0 version) of the [TOML official test program](https://github.com/toml-lang/toml-test).
+1. Fully supports the [TOML V1.1.0](https://toml.io/en/v1.1.0) specification, and has passed all 894 tests (V 1.1.0 version) of the [TOML official test program](https://github.com/toml-lang/toml-test). **Note: The testing tool was found to have an issue; not all tests actually passed, but the result showed that they did. Further revisions are needed.**
 2. Added the TOML.Helper.pas unit, adding a large number of functions and methods to simplify read and write operations. For usage instructions, please refer to the [documentation](docs/TOML_Helper_Documentation.md).
 3. Added the TOML.Json.pas unit to support mutual conversion between TOML and JSON formats.
 4. Floating-point and date data types are supported for output in raw precision format: RawString.
@@ -24,7 +24,7 @@ toml-test v2.1.0 [.\tomldecoder.exe] [.\TOMLEncoder.exe]
 encoder tests: 214 passed,  0 failed
 invalid tests: 466 passed,  0 failed
 ```
-
+**Note: The testing tool was found to have an issue; not all tests actually passed, but the result showed that they did. Further revisions are needed.**
 
 
 ```  
