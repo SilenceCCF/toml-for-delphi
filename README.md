@@ -25,9 +25,9 @@ encoder tests: 214 passed,  0 failed
 invalid tests: 466 passed,  0 failed
 ```
 
-```  
+  
 - Example：
-```
+```pascal
     // Open a toml file
     Config := LoadToml('config.toml');
     // or:
@@ -116,6 +116,7 @@ invalid tests: 466 passed,  0 failed
       end;    
     parameters.ForEachTable(ProcessParameter);  // load
 ```
+
 
 ----
 
