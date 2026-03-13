@@ -1,19 +1,24 @@
 (* TOML.Serializer.pas
-   TOML data structure serialization unit.
-   This unit converts TOML objects into text format conforming to the TOML v1.1.0 specification, supporting:
-    - Key-value pairs (including keys with automatic quotation marks and escaping)
-    - Normal table [table] and array table [[array]]
-    - Inline tables { key = value, ... }
-    - Array [...]
-    - Base strings (with escapes)
-    - Integers and floating-point numbers (including inf/nan, preserving original precision)）
-    - Boolean
-    - Date and time (RFC 3339, raw text preferred)
-  Key features:
-    - Efficient string building using TStringBuilder
-    - Sort the table keys before traversing to ensure a definite output order.
-    - Key-value pairs are output before sublists and arrays (compliant with TOML specifications)
-    - The path of each segment is traced via FCurrentPath, used to generate the [abc] header.
+   TOML serializer — converts TOML data structures to text.
+   Conforms to the TOML v1.1.0 specification.
+
+   Comment serialization (optional):
+     When APreserveComments = True is passed to Serialize / SerializeTOML*:
+       - CommentBefore  is emitted before the key-value line / section header.
+       - CommentInline  is emitted at the end of the value line / header line.
+       - CommentTrailing is emitted before the closing ']' (arrays and inline tables)
+         or as the file footer (root table).
+
+   Key ordering:
+     Uses TTOMLOrderedTable iteration, so keys are emitted in insertion order
+     (i.e. the order they were read from the file, or the order the caller added them).
+     Sorting is NOT applied any more when comment-preservation is requested, in order
+     to keep comments correctly associated with their keys.  When
+     APreserveComments = False the old alphabetic-sort behaviour is preserved.
+
+   Wrap width:
+     Multi-line string wrapping (FWrapWidth > 0) works as before.
+     Inside arrays and inline tables FWrapWidth is temporarily set to 0 per the spec.
 *)
 unit TOML.Serializer;
 
@@ -21,117 +26,86 @@ interface
 
 uses
   SysUtils, Classes, Math, TOML.Types, Generics.Collections;
-{$IF CompilerVersion < 20.0}
 
+{$IF CompilerVersion < 20.0}
 function CharInSet(C: Char; const CharSet: TSysCharSet): Boolean; inline;
 {$IFEND}
 
 type
-  { Key-Value pair type for TOML tables }
-  TTOMLKeyValuePair = TPair<string, TTOMLValue>;
-  { TOML serializer class that converts TOML data to text format
-    This class handles the conversion of TOML data structures into properly
-    formatted TOML text, following the TOML v1.0.0 specification }
-
   TTOMLSerializer = class
   private
-    FStringBuilder: TStringBuilder;   // StringBuilder for efficient string building
-    FIndentLevel: Integer;            // Current indentation level
-    FCurrentPath: TStringList;        // Tracks current table path for proper nesting
-    FFormatSettings: TFormatSettings; // Invariant formatting (decimal point is '.', unaffected by localization)
-    FWrapWidth: Integer;              // Max column width for multi-line string wrapping (0 = disabled)
+    FStringBuilder: TStringBuilder;
+    FIndentLevel: Integer;
+    FCurrentPath: TStringList;
+    FFormatSettings: TFormatSettings;
+    FWrapWidth: Integer;
+    FPreserveComments: Boolean;
 
-    { Writes indentation at current level
-      Used to maintain consistent formatting }
     procedure WriteIndent;
-
-    { Writes a line with optional content and newline
-      @param ALine Optional string content to write }
     procedure WriteLine(const ALine: string = '');
 
-    { Writes a TOML key with proper quoting
-      @param AKey The key to write
-      Handles escaping and quoting of keys as needed }
     procedure WriteKey(const AKey: string);
-
-    { Writes a TOML string value with proper escaping
-      @param AValue The string to write
-      Handles all required string escaping per TOML spec }
     procedure WriteString(const AValue: string);
-
-    { Writes a TOML multi-line basic string using triple-quote syntax
-      @param AValue The string to write (may contain newlines)
-      @param AKeyWidth Width of "key = " prefix for alignment purposes
-      Used when FWrapWidth > 0 and the string contains newlines or is long }
     procedure WriteMultiLineString(const AValue: string; AKeyWidth: Integer);
-
-    { Writes any TOML value based on its type
-      @param AValue The value to write
-      Dispatches to appropriate write method based on value type }
     procedure WriteValue(const AValue: TTOMLValue);
-
-    { Writes a TOML table
-      @param ATable The table to write
-      @param AInline Whether to write as inline table
-      Handles both standard and inline table formats }
     procedure WriteTable(const ATable: TTOMLTable; const AInline: Boolean = False);
-
-    { Writes a TOML array
-      @param AArray The array to write
-      Handles arrays of any valid TOML type }
     procedure WriteArray(const AArray: TTOMLArray);
-
-    { Write a TOML datetime value (preferably use raw text,
-      otherwise output in Kind format). }
     procedure WriteDateTime(const ADateTimeValue: TTOMLValue);
 
-    { Construct the current complete table path string, in the form of "ab\"cd\"".
-      For use in the [path] or [[path]] header}
-    function BuildTablePath(const NewKey: string): string;
+    { Emit CommentBefore lines.  Each line in the stored string is already a
+      raw '#...' comment or an empty string representing a blank line.  We emit
+      them with proper indentation. }
+    procedure WriteCommentBefore(const AComment: string);
 
-    { Determine if a key name needs to be enclosed in quotes. (Keys containing
-      only AZ, az, 0-9, _, and - do not need to be enclosed in quotes) }
+    { Emit a CommentInline string on the same line (appended after the value). }
+    procedure WriteCommentInline(const AComment: string);
+
+    { Emit a CommentTrailing block (like CommentBefore but for trailing position). }
+    procedure WriteCommentTrailing(const AComment: string);
+
+    { Ensure the output ends with exactly one blank line (two consecutive #10).
+      Used before section headers to produce readable separation without
+      inserting a spurious blank line at the very start of the output. }
+    procedure EnsureBlankLine;
+
+    function BuildTablePath(const NewKey: string): string;
     function NeedsQuoting(const AKey: string): Boolean;
 
-  public
-    { Creates a new TOML serializer instance }
-    constructor Create;
+    { Return an ordered list of keys for ATable.
+      When FPreserveComments is False the keys are sorted alphabetically.
+      When FPreserveComments is True the insertion order is preserved. }
+    function GetSortedKeys(const ATable: TTOMLTable): TArray<string>;
 
-    { Cleans up the serializer instance }
+  public
+    constructor Create;
     destructor Destroy; override;
 
-    { Serializes a TOML value to string format
-      @param AValue The value to serialize
-      @param AWrapWidth Maximum column width for wrapping long strings and multi-line
-             strings. Strings containing newlines are always written as multi-line
-             basic strings ("""). Long strings without newlines are wrapped using a
-             line-ending backslash continuation. Pass 0 (default) to disable wrapping.
-      @returns The serialized TOML string
-      @raises ETOMLSerializerException if value cannot be serialized }
-    function Serialize(const AValue: TTOMLValue; AWrapWidth: Integer = 0): string;
+    { Serialize a TOML value to string.
+      @param AValue            The value to serialize.
+      @param AWrapWidth        Maximum column width for string wrapping (0 = disabled).
+      @param APreserveComments When True, comment properties on each node are emitted.
+      @returns Serialized TOML text. }
+    function Serialize(const AValue: TTOMLValue; AWrapWidth: Integer = 0; APreserveComments: Boolean = False): string;
   end;
-{ Serializes a TOML value to string format
-  @param AValue The value to serialize
-  @param AWrapWidth Maximum column width for wrapping. Strings with embedded
-         newlines become multi-line basic strings ("""). Long strings are wrapped
-         with a line-ending backslash. 0 = disabled (default).
-  @returns The serialized TOML string
-  @raises ETOMLSerializerException if value cannot be serialized }
 
-function SerializeTOML(const AValue: TTOMLValue; AWrapWidth: Integer = 0): string;
-{ Serializes a TOML value to a file
-  @param AValue The value to serialize
-  @param AFileName The output file path
-  @param BOM Whether to write a UTF-8 BOM (default True)
-  @param AWrapWidth Maximum column width for wrapping (0 = disabled, default)
-  @returns True if successful, False otherwise
-  @raises ETOMLSerializerException if value cannot be serialized
-  @raises EFileStreamError if file cannot be written }
+{ Serialize a TOML value to a string.
+  @param AValue            The root value (usually a TTOMLTable).
+  @param AWrapWidth        Max column width for long-string wrapping (0 = off).
+  @param APreserveComments Emit comment nodes when True (default False). }
+function SerializeTOML(const AValue: TTOMLValue; AWrapWidth: Integer = 0; APreserveComments: Boolean = False):
+  string;
 
+{ Serialize a TOML value to a file.
+  @param AValue            The value to serialize.
+  @param AFileName         Output file path.
+  @param BOM               Write UTF-8 BOM (default True).
+  @param AWrapWidth        Max column width for wrapping (0 = off).
+  @param APreserveComments Emit comment nodes when True (default False). }
 function SerializeTOMLToFile(const AValue: TTOMLValue; const AFileName: string; BOM: Boolean = True;
-  AWrapWidth: Integer = 0): Boolean;
+  AWrapWidth: Integer = 0; APreserveComments: Boolean = False): Boolean;
 
 implementation
+
 {$IF CompilerVersion < 20.0}
 
 function CharInSet(C: Char; const CharSet: TSysCharSet): Boolean;
@@ -140,40 +114,48 @@ begin
 end;
 {$IFEND}
 
-function SerializeTOML(const AValue: TTOMLValue; AWrapWidth: Integer = 0): string;
+{ =========================================================================
+  Public helpers
+  ========================================================================= }
+
+function SerializeTOML(const AValue: TTOMLValue; AWrapWidth: Integer; APreserveComments: Boolean): string;
 var
-  Serializer: TTOMLSerializer;
+  S: TTOMLSerializer;
 begin
-  Serializer := TTOMLSerializer.Create;
+  S := TTOMLSerializer.Create;
   try
-    Result := Serializer.Serialize(AValue, AWrapWidth);
+    Result := S.Serialize(AValue, AWrapWidth, APreserveComments);
   finally
-    Serializer.Free;
+    S.Free;
   end;
 end;
 
-function SerializeTOMLToFile(const AValue: TTOMLValue; const AFileName: string; BOM: Boolean = True;
-  AWrapWidth: Integer = 0): Boolean;
+function SerializeTOMLToFile(const AValue: TTOMLValue; const AFileName: string; BOM: Boolean; AWrapWidth:
+  Integer; APreserveComments: Boolean): Boolean;
 var
   TOML: string;
+  SL: TStringList;
 begin
   Result := False;
   try
-    TOML := SerializeTOML(AValue, AWrapWidth);
-    with TStringList.Create do
+    TOML := SerializeTOML(AValue, AWrapWidth, APreserveComments);
+    SL := TStringList.Create;
     try
-      Text := TOML;
-      WriteBOM := BOM;
-      SaveToFile(AFileName, TEncoding.UTF8);
+      SL.Text := TOML;
+      SL.WriteBOM := BOM;
+      SL.SaveToFile(AFileName, TEncoding.UTF8);
       Result := True;
     finally
-      Free;
+      SL.Free;
     end;
   except
-    // False
+    // Return False
   end;
 end;
-{ TTOMLSerializer }
+
+{ =========================================================================
+  TTOMLSerializer
+  ========================================================================= }
 
 constructor TTOMLSerializer.Create;
 begin
@@ -183,9 +165,8 @@ begin
   FCurrentPath := TStringList.Create;
   FCurrentPath.Delimiter := '.';
   FCurrentPath.StrictDelimiter := True;
+  FPreserveComments := False;
 
-  // Use invariant formatting to ensure that the decimal point is always '.',
-  // unaffected by system locale.
   {$IF CompilerVersion >= 22.0}
   FFormatSettings := TFormatSettings.Invariant;
   {$ELSE}
@@ -212,7 +193,7 @@ begin
     FStringBuilder.Append(' ');
 end;
 
-procedure TTOMLSerializer.WriteLine(const ALine: string = '');
+procedure TTOMLSerializer.WriteLine(const ALine: string);
 begin
   if ALine <> '' then
   begin
@@ -227,11 +208,8 @@ var
   i: Integer;
   C: Char;
 begin
-  // Spaces must be enclosed in quotes.
   if AKey = '' then
     Exit(True);
-
-  // Keys containing only A-Z, az, 0-9, _, or - do not need to be enclosed in quotes.
   for i := 1 to Length(AKey) do
   begin
     C := AKey[i];
@@ -246,8 +224,6 @@ function TTOMLSerializer.BuildTablePath(const NewKey: string): string;
 var
   SB: TStringBuilder;
   i: Integer;
-  { When appending a single path segment, enclose it in double quotes
-    and escape it if it contains special characters. }
 
   procedure AppendSeg(const S: string);
   var
@@ -275,7 +251,6 @@ var
           '\':
             SB.Append('\\');
         else
-          // Escape all control characters (0x00-0x1F and 0x7F)
           if (Code <= 31) or (Code = 127) then
             SB.AppendFormat('\u%.4x', [Code])
           else
@@ -308,64 +283,146 @@ end;
 
 procedure TTOMLSerializer.WriteKey(const AKey: string);
 var
-  SavedWrapWidth: Integer;
+  SavedWrap: Integer;
 begin
-  // Single key segment: When it contains special characters
-  // (including periods), it must be enclosed in quotation marks.
-  // Keys must always use basic single-line strings — disable wrap mode
-  // temporarily so WriteString never emits a multi-line string for a key.
   if NeedsQuoting(AKey) then
   begin
-    SavedWrapWidth := FWrapWidth;
+    SavedWrap := FWrapWidth;
     FWrapWidth := 0;
     try
       WriteString(AKey);
     finally
-      FWrapWidth := SavedWrapWidth;
+      FWrapWidth := SavedWrap;
     end;
   end
   else
     FStringBuilder.Append(AKey);
 end;
 
+{ -------------------------------------------------------------------------
+  Comment output helpers
+  ------------------------------------------------------------------------- }
+
+procedure TTOMLSerializer.WriteCommentBefore(const AComment: string);
+var
+  Lines: TStringList;
+  i: Integer;
+  Line: string;
+  Last: Integer;
+begin
+  if (not FPreserveComments) or (AComment = '') then
+    Exit;
+  Lines := TStringList.Create;
+  try
+    Lines.Text := AComment;
+    // TStringList.Text may append a trailing empty item when the string ends
+    // with #10; skip it to avoid writing a spurious blank line.
+    Last := Lines.Count - 1;
+    while (Last >= 0) and (Lines[Last] = '') do
+      Dec(Last);
+    for i := 0 to Last do
+    begin
+      Line := Lines[i];
+      if Line = '' then
+        FStringBuilder.AppendLine  // blank line
+      else
+      begin
+        WriteIndent;
+        FStringBuilder.Append(Line);
+        FStringBuilder.AppendLine;
+      end;
+    end;
+  finally
+    Lines.Free;
+  end;
+end;
+
+procedure TTOMLSerializer.WriteCommentInline(const AComment: string);
+begin
+  if (not FPreserveComments) or (AComment = '') then
+    Exit;
+  // AComment already starts with '#'
+  FStringBuilder.Append(' ');
+  FStringBuilder.Append(AComment);
+end;
+
+procedure TTOMLSerializer.WriteCommentTrailing(const AComment: string);
+var
+  Lines: TStringList;
+  i: Integer;
+  Line: string;
+  Last: Integer;
+begin
+  if (not FPreserveComments) or (AComment = '') then
+    Exit;
+  Lines := TStringList.Create;
+  try
+    Lines.Text := AComment;
+    Last := Lines.Count - 1;
+    while (Last >= 0) and (Lines[Last] = '') do
+      Dec(Last);
+    for i := 0 to Last do
+    begin
+      Line := Lines[i];
+      if Line = '' then
+        FStringBuilder.AppendLine
+      else
+      begin
+        WriteIndent;
+        FStringBuilder.Append(Line);
+        FStringBuilder.AppendLine;
+      end;
+    end;
+  finally
+    Lines.Free;
+  end;
+end;
+
+procedure TTOMLSerializer.EnsureBlankLine;
+var
+  L: Integer;
+begin
+  L := FStringBuilder.Length;
+  if L = 0 then
+    Exit;                          // nothing written yet — no blank line needed
+  if FStringBuilder.Chars[L - 1] <> #10 then
+    FStringBuilder.AppendLine;                 // close the current line first
+  L := FStringBuilder.Length;
+  if (L >= 2) and (FStringBuilder.Chars[L - 2] = #10) then
+    Exit;                                      // already ends with a blank line
+  FStringBuilder.AppendLine;                   // add the separating blank line
+end;
+
+{ -------------------------------------------------------------------------
+  String / number / datetime writers (unchanged from original)
+  ------------------------------------------------------------------------- }
+
 procedure TTOMLSerializer.WriteString(const AValue: string);
 var
   i, Code: Integer;
   C: Char;
-  HasNewline: Boolean;
-  EscLen: Integer;
+  HasNewline, EscLen: Integer;
 begin
-  // When wrapping is enabled, check whether the string needs multi-line output:
-  //   (a) contains embedded newlines, or
-  //   (b) its escaped representation (including the surrounding quotes and the
-  //       "key = " prefix that was already written) would exceed FWrapWidth.
-  // Multi-line strings are only valid at the top-level key-value position
-  // (FWrapWidth is set to 0 inside arrays and inline tables by their writers).
-  if (FWrapWidth > 0) then
+  if FWrapWidth > 0 then
   begin
-    HasNewline := False;
-    EscLen := 2; // opening + closing quote
+    HasNewline := 0;
+    EscLen := 2;
     for i := 1 to Length(AValue) do
     begin
       C := AValue[i];
       if (C = #10) or (C = #13) then
-        HasNewline := True;
-      // Tally the escaped length so we can decide whether to wrap.
+        HasNewline := 1;
       case C of
         #8, #9, #10, #12, #13, '"', '\':
-          Inc(EscLen, 2);           // two-char escape sequence
+          Inc(EscLen, 2);
       else
         if (Ord(C) <= 31) or (Ord(C) = 127) then
-          Inc(EscLen, 6)            // \uXXXX
+          Inc(EscLen, 6)
         else
           Inc(EscLen, 1);
       end;
     end;
-
-    // Use multi-line form when the string has real newlines, or when the
-    // fully-escaped single-line form (including the indent already in the
-    // buffer for this line) would be longer than FWrapWidth.
-    if HasNewline or (EscLen > FWrapWidth) then
+    if (HasNewline = 1) or (EscLen > FWrapWidth) then
     begin
       WriteMultiLineString(AValue, 0);
       Exit;
@@ -379,21 +436,20 @@ begin
     Code := Ord(C);
     case C of
       #8:
-        FStringBuilder.Append('\b');  // Backspace
+        FStringBuilder.Append('\b');
       #9:
-        FStringBuilder.Append('\t');  // Tab
+        FStringBuilder.Append('\t');
       #10:
-        FStringBuilder.Append('\n');  // Line feed
+        FStringBuilder.Append('\n');
       #12:
-        FStringBuilder.Append('\f');  // Page break
+        FStringBuilder.Append('\f');
       #13:
-        FStringBuilder.Append('\r');  // Carriage return
+        FStringBuilder.Append('\r');
       '"':
-        FStringBuilder.Append('\"');  // Quote
+        FStringBuilder.Append('\"');
       '\':
-        FStringBuilder.Append('\\');  // Backslash
+        FStringBuilder.Append('\\');
     else
-      // Escape all control characters (0x00-0x1F and 0x7F)
       if (Code <= 31) or (Code = 127) then
         FStringBuilder.AppendFormat('\u%.4x', [Code])
       else
@@ -404,29 +460,14 @@ begin
 end;
 
 procedure TTOMLSerializer.WriteMultiLineString(const AValue: string; AKeyWidth: Integer);
-{ Writes a TOML multi-line basic string (""" ... """).
-  Strategy:
-    1. Split the value on LF / CR+LF boundaries into logical lines.
-    2. Each logical line is tokenised into alternating whitespace / word runs.
-       All characters are escaped at tokenisation time so that column counting
-       is done on the final output width, not the raw input width.
-    3. When FWrapWidth > 0 the tokens are emitted greedily:
-         - Spaces before a word that would overflow are replaced by a TOML
-           line-ending backslash continuation (\ + newline) so the break always
-           falls between words, never inside a word.
-         - A single word that is longer than FWrapWidth is emitted as-is on its
-           own line (cannot be broken further without changing the string value).
-  The opening """ is emitted on the same line as the key (key = """\n) and the
-  closing """ appears on its own indented line.
-}
 type
-  TToken = record
+  TMLToken = record
     Text: string;
     IsSpace: Boolean;
   end;
 var
   Lines: TStringList;
-  Tokens: array of TToken;
+  Tokens: array of TMLToken;
   LineIdx: Integer;
   CharIdx: Integer;
   TokIdx: Integer;
@@ -437,11 +478,7 @@ var
   TokenStr: string;
   IsSpace: Boolean;
   CurIsSpace: Boolean;
-  NextWordLen: Integer;
-  LookIdx: Integer;
-  { Escape a single character for use inside a multi-line basic string.
-    Real newlines are handled at the line-splitting level so we never
-    emit \n or \r here. }
+  NextWordLen, LookIdx: Integer;
 
   function EscapeChar(Ch: Char): string;
   var
@@ -466,32 +503,20 @@ var
   end;
 
 begin
-  // Indentation for content lines (matches the current block-table indent level).
   Indent := StringOfChar(' ', FIndentLevel * 2);
-
-  // Opening delimiter on the same line as "key = ".
   FStringBuilder.AppendLine('"""');
-
   Lines := TStringList.Create;
   try
-    Lines.Text := AValue; // Splits on CR, LF, CR+LF automatically.
-
+    Lines.Text := AValue;
     for LineIdx := 0 to Lines.Count - 1 do
     begin
       Line := Lines[LineIdx];
-
-      // ---------------------------------------------------------------
-      // Phase 1: tokenise the logical line into (space | word) runs.
-      //   We escape every character immediately so that Length(Token.Text)
-      //   equals the number of output columns the token will occupy.
-      // ---------------------------------------------------------------
       SetLength(Tokens, 0);
       CharIdx := 1;
       while CharIdx <= Length(Line) do
       begin
         C := Line[CharIdx];
         IsSpace := (C = ' ') or (C = #9);
-
         TokenStr := '';
         while CharIdx <= Length(Line) do
         begin
@@ -499,11 +524,8 @@ begin
           CurIsSpace := (C = ' ') or (C = #9);
           if CurIsSpace <> IsSpace then
             Break;
-
           if C = '"' then
           begin
-            // Escape the first quote in any run of >= 2 consecutive quotes to
-            // prevent an accidental """ closing delimiter.
             if (CharIdx < Length(Line)) and (Line[CharIdx + 1] = '"') then
               TokenStr := TokenStr + '\"'
             else
@@ -511,34 +533,22 @@ begin
           end
           else
             TokenStr := TokenStr + EscapeChar(C);
-
           Inc(CharIdx);
         end;
-
         SetLength(Tokens, Length(Tokens) + 1);
         Tokens[High(Tokens)].Text := TokenStr;
         Tokens[High(Tokens)].IsSpace := IsSpace;
       end;
 
-      // ---------------------------------------------------------------
-      // Phase 2: emit tokens, breaking at word boundaries when wrapping.
-      // ---------------------------------------------------------------
       FStringBuilder.Append(Indent);
       Col := Length(Indent);
       TokIdx := 0;
-
       while TokIdx <= High(Tokens) do
       begin
         TokenStr := Tokens[TokIdx].Text;
         IsSpace := Tokens[TokIdx].IsSpace;
-
         if IsSpace then
         begin
-          // Peek ahead: if there is a following word token, decide whether
-          // the word after this space would overflow the wrap width.
-          // If so, emit the space first (it is part of the string value and
-          // must be preserved), then emit the line-ending backslash so the
-          // parser skips the newline and the indent on the next line.
           if (FWrapWidth > 0) and (TokIdx + 1 <= High(Tokens)) then
           begin
             NextWordLen := 0;
@@ -547,38 +557,25 @@ begin
               Inc(LookIdx);
             if LookIdx <= High(Tokens) then
               NextWordLen := Length(Tokens[LookIdx].Text);
-
             if Col + Length(TokenStr) + NextWordLen > FWrapWidth then
             begin
-              // Output the space BEFORE the backslash so it is not swallowed
-              // by the TOML line-ending-backslash whitespace-trim rule.
               FStringBuilder.Append(TokenStr);
               FStringBuilder.AppendLine('\');
               FStringBuilder.Append(Indent);
               Col := Length(Indent);
               Inc(TokIdx);
-              // Skip any additional space tokens that would become unwanted
-              // leading spaces on the continuation line.
               while (TokIdx <= High(Tokens)) and Tokens[TokIdx].IsSpace do
                 Inc(TokIdx);
               Continue;
             end;
           end;
-
-          // Space fits (or no following word): emit it normally.
-          // Trailing spaces are kept as-is because they are part of the
-          // string value; omitting them would silently alter the data.
           FStringBuilder.Append(TokenStr);
           Inc(Col, Length(TokenStr));
         end
         else
         begin
-          // Word token.
           if (FWrapWidth > 0) and (Col + Length(TokenStr) > FWrapWidth) and (Col > Length(Indent)) then
           begin
-            // The word doesn't fit and is not the first thing on this output
-            // line.  Break before it.  (If it IS first, emit it anyway — we
-            // cannot split a single word without altering the string value.)
             FStringBuilder.AppendLine('\');
             FStringBuilder.Append(Indent);
             Col := Length(Indent);
@@ -586,21 +583,38 @@ begin
           FStringBuilder.Append(TokenStr);
           Inc(Col, Length(TokenStr));
         end;
-
         Inc(TokIdx);
       end;
 
-      // End of logical line: emit a real newline.
-      FStringBuilder.AppendLine('');
+      if (LineIdx < Lines.Count - 1) then
+      begin
+        FStringBuilder.AppendLine('');
+      end
+      else
+      begin
+        // If it is the last line,
+        // Check if the raw string AValue ends with a newline character (#10 or #13).
+        if (AValue <> '') and ((AValue[Length(AValue)] = #10) or (AValue[Length(AValue)] = #13)) then
+        begin
+          // The original text contains line breaks, so we also output the line breaks.
+          FStringBuilder.AppendLine('');
+        end
+        else
+        begin
+          // The end of the original text does not have a newline.
+          // To start a new line for """ without breaking the data.
+          // Use the TOML line concatenation character '\'.
+          // It tells the parser to ignore following newlines and indentation.
+          FStringBuilder.Append('\');
+          FStringBuilder.AppendLine('');
+        end;
+      end;
     end;
   finally
     Lines.Free;
   end;
-
-  // Closing delimiter on its own indented line.
   FStringBuilder.Append(Indent);
   FStringBuilder.Append('"""');
-  // Caller (WriteTable) will append the trailing newline via WriteLine.
 end;
 
 procedure TTOMLSerializer.WriteDateTime(const ADateTimeValue: TTOMLValue);
@@ -611,7 +625,6 @@ var
   Sign: Char;
   FracSec, FracPart: Double;
   SecInt: Integer;
-  { Calculate and append decimal seconds (if any) }
 
   procedure AppendFractionalSeconds;
   begin
@@ -621,7 +634,6 @@ var
     if FracPart > 0.0 then
     begin
       FracStr := FloatToStrF(FracPart, ffFixed, 15, 6, FFormatSettings);
-      // Remove leading zeros, keep the decimal point and subsequent digits.
       if (Length(FracStr) > 2) and (FracStr[1] = '0') and (FracStr[2] = '.') then
         Delete(FracStr, 1, 1);
       Str := Str + FracStr;
@@ -631,39 +643,29 @@ var
 begin
   if not (ADateTimeValue is TTOMLDateTime) then
     raise ETOMLSerializerException.Create('Invalid datetime value type');
-
   DateTimeVal := TTOMLDateTime(ADateTimeValue);
 
-  // Use the original text first to ensure accurate formatting.
   if DateTimeVal.RawString <> '' then
   begin
     FStringBuilder.Append(DateTimeVal.RawString);
     Exit;
   end;
 
-  // Generate text by date and time subtype
   case DateTimeVal.Kind of
     tdkLocalDate:
-      // Local date：1979-05-27
       Str := FormatDateTime('yyyy-mm-dd', DateTimeVal.Value);
-
     tdkLocalTime:
       begin
-        // Local time：07:32:00[.999999]
         Str := FormatDateTime('hh:nn:ss', DateTimeVal.Value);
         AppendFractionalSeconds;
       end;
-
     tdkLocalDateTime:
       begin
-        // Local DateTime：1979-05-27T07:32:00[.999999]
         Str := FormatDateTime('yyyy-mm-dd"T"hh:nn:ss', DateTimeVal.Value);
         AppendFractionalSeconds;
       end;
-
     tdkOffsetDateTime:
       begin
-        // Date and time with time zone offset: 1979-05-27T07:32:00[.999999]Z 或 +HH:MM / -HH:MM
         Str := FormatDateTime('yyyy-mm-dd"T"hh:nn:ss', DateTimeVal.Value);
         AppendFractionalSeconds;
         if DateTimeVal.TimeZoneOffset = 0 then
@@ -680,90 +682,111 @@ begin
         end;
       end;
   end;
-
   FStringBuilder.Append(Str);
 end;
 
+{ -------------------------------------------------------------------------
+  Array serializer
+  ------------------------------------------------------------------------- }
 
 procedure TTOMLSerializer.WriteArray(const AArray: TTOMLArray);
-{ TOML v1.1.0 array:
-    - Arrays may span multiple lines.
-    - A trailing comma after the last value is permitted.
-}
 var
   i: Integer;
   SavedWrap: Integer;
   ForceMulti: Boolean;
   ProbeBuilder: TStringBuilder;
   Indent: string;
-  ColLimit: Integer;
-  { Render a single value into a scratch builder to measure its width,
-    or to detect whether it is a complex type. }
 
-  function IsComplex(AValue: TTOMLValue): Boolean;
-  begin
-    Result := AValue.ValueType in [tvtTable, tvtInlineTable, tvtArray];
-  end;
-
-  { Estimate the inline rendering width of a scalar.  We do this by
-    temporarily redirecting FStringBuilder to a throw-away instance. }
+  { Measure the single-line rendered width of AValue.
+    Always uses WrapWidth=0 so nested structures render compact. }
   function InlineWidth(AValue: TTOMLValue): Integer;
   var
-    Save: TStringBuilder;
+    SaveSB:   TStringBuilder;
+    SaveWrap: Integer;
   begin
-    Save := FStringBuilder;
+    SaveSB        := FStringBuilder;
+    SaveWrap      := FWrapWidth;
     FStringBuilder := ProbeBuilder;
+    FWrapWidth    := 0;
     ProbeBuilder.Clear;
     WriteValue(AValue);
-    Result := ProbeBuilder.Length;
-    FStringBuilder := Save;
+    Result        := ProbeBuilder.Length;
+    FStringBuilder := SaveSB;
+    FWrapWidth    := SaveWrap;
   end;
 
 begin
-  // Disable multi-line string wrapping inside arrays (spec requirement).
-  SavedWrap := FWrapWidth;
-  FWrapWidth := 0;
+  SavedWrap    := FWrapWidth;
   ProbeBuilder := TStringBuilder.Create;
   try
-    // --- Empty array ---
     if AArray.Count = 0 then
     begin
-      FStringBuilder.Append('[]');
+      FStringBuilder.Append('[');
+      if FPreserveComments and (AArray.CommentTrailing <> '') then
+      begin
+        FStringBuilder.Append(' ');
+        FStringBuilder.Append(AArray.CommentTrailing);
+      end;
+      FStringBuilder.Append(']');
       Exit;
     end;
 
-//    ColLimit := IfThen(SavedWrap > 0, SavedWrap, 80);
-//
-    // --- Decide single-line vs multi-line ---
-    // Force multi-line if any element is itself complex (array / table).
-    ForceMulti := False;
-    for i := 0 to AArray.Count - 1 do
-      if IsComplex(AArray.GetItem(i)) then
-      begin
-        ForceMulti := True;
-        Break;
-      end;
+    // ── Decide single-line vs multi-line ─────────────────────────────────
 
-    // Width check is only performed when wrapping is enabled (SavedWrap > 0).
-    // When FWrapWidth = 0 the user explicitly disabled wrapping, so we respect
-    // that and never break a scalar-only array purely on length grounds.
+    ForceMulti := False;
+
+    // Comments force multi-line (they cannot appear inside a single-line array).
+    if FPreserveComments then
+    begin
+      if AArray.CommentTrailing <> '' then
+        ForceMulti := True;
+      if not ForceMulti then
+        for i := 0 to AArray.Count - 1 do
+          if (AArray.GetItem(i).CommentBefore <> '') or
+             (AArray.GetItem(i).CommentInline <> '') then
+          begin
+            ForceMulti := True;
+            Break;
+          end;
+    end;
+
+    // Width check: measure each element's compact (WrapWidth=0) single-line
+    // rendering; if the total exceeds SavedWrap, go multi-line.
+    // This subsumes the old IsComplex check — a nested array/table that is
+    // itself wide will push TotalW past the limit naturally.
     if not ForceMulti and (SavedWrap > 0) then
     begin
-      ColLimit := SavedWrap;
-      var TotalW := FIndentLevel * 2 + 2; // "[ " ... " ]"
+      var TotalW := FIndentLevel * 2 + 2;   // indent + '[' + ']'
       for i := 0 to AArray.Count - 1 do
       begin
         Inc(TotalW, InlineWidth(AArray.GetItem(i)));
         if i < AArray.Count - 1 then
-          Inc(TotalW, 2); // ", "
+          Inc(TotalW, 2);                    // ', '
+        if TotalW > SavedWrap then
+        begin
+          ForceMulti := True;
+          Break;
+        end;
       end;
-      if TotalW > ColLimit then
-        ForceMulti := True;
+    end
+    else if not ForceMulti then
+    begin
+      // No wrap limit set — fall back to the original IsComplex rule so that
+      // nested arrays / inline-tables still go multi-line by default.
+      for i := 0 to AArray.Count - 1 do
+        if AArray.GetItem(i).ValueType in [tvtTable, tvtInlineTable, tvtArray] then
+        begin
+          ForceMulti := True;
+          Break;
+        end;
     end;
 
-    // --- Single-line format ---
+    // ── Single-line ───────────────────────────────────────────────────────
     if not ForceMulti then
     begin
+      // Suppress wrapping inside single-line array elements so they stay
+      // on one line (consistent with the probe measurement above).
+      FWrapWidth := 0;
       FStringBuilder.Append('[');
       for i := 0 to AArray.Count - 1 do
       begin
@@ -771,31 +794,104 @@ begin
           FStringBuilder.Append(', ');
         WriteValue(AArray.GetItem(i));
       end;
+      if FPreserveComments and (AArray.CommentTrailing <> '') then
+      begin
+        FStringBuilder.Append(' ');
+        FStringBuilder.Append(AArray.CommentTrailing);
+      end;
       FStringBuilder.Append(']');
+      FWrapWidth := SavedWrap;
       Exit;
     end;
 
-    // --- Multi-line format ---
+    // ── Multi-line ────────────────────────────────────────────────────────
+    // FWrapWidth remains SavedWrap so that nested inline tables / arrays
+    // inside WriteValue can also decide to go multi-line independently.
     Indent := StringOfChar(' ', (FIndentLevel + 1) * 2);
     FStringBuilder.AppendLine('[');
+
     for i := 0 to AArray.Count - 1 do
     begin
+      var Elem := AArray.GetItem(i);
+
+      // CommentBefore
+      if FPreserveComments and (Elem.CommentBefore <> '') then
+      begin
+        var CBLines := TStringList.Create;
+        try
+          CBLines.Text := Elem.CommentBefore;
+          var j: Integer;
+          var LastJ := CBLines.Count - 1;
+          while (LastJ >= 0) and (CBLines[LastJ] = '') do
+            Dec(LastJ);
+          for j := 0 to LastJ do
+          begin
+            if CBLines[j] = '' then
+              FStringBuilder.AppendLine
+            else
+            begin
+              FStringBuilder.Append(Indent);
+              FStringBuilder.Append(CBLines[j]);
+              FStringBuilder.AppendLine;
+            end;
+          end;
+        finally
+          CBLines.Free;
+        end;
+      end;
+
       FStringBuilder.Append(Indent);
       Inc(FIndentLevel);
-      WriteValue(AArray.GetItem(i));
+      WriteValue(Elem);     // FWrapWidth = SavedWrap — inner nesting works
       Dec(FIndentLevel);
-      FStringBuilder.Append(',');   // trailing comma always present (spec allows it)
+      FStringBuilder.Append(',');
+
+      if FPreserveComments and (Elem.CommentInline <> '') then
+      begin
+        FStringBuilder.Append(' ');
+        FStringBuilder.Append(Elem.CommentInline);
+      end;
       FStringBuilder.AppendLine;
     end;
-    // Closing bracket at original indentation level
+
+    // CommentTrailing before ']'
+    if FPreserveComments and (AArray.CommentTrailing <> '') then
+    begin
+      var CTLines := TStringList.Create;
+      try
+        CTLines.Text := AArray.CommentTrailing;
+        var j: Integer;
+        var LastJ := CTLines.Count - 1;
+        while (LastJ >= 0) and (CTLines[LastJ] = '') do
+          Dec(LastJ);
+        for j := 0 to LastJ do
+        begin
+          if CTLines[j] = '' then
+            FStringBuilder.AppendLine
+          else
+          begin
+            FStringBuilder.Append(StringOfChar(' ', FIndentLevel * 2));
+            FStringBuilder.Append(CTLines[j]);
+            FStringBuilder.AppendLine;
+          end;
+        end;
+      finally
+        CTLines.Free;
+      end;
+    end;
+
     FStringBuilder.Append(StringOfChar(' ', FIndentLevel * 2));
     FStringBuilder.Append(']');
 
   finally
-    FWrapWidth := SavedWrap;
     ProbeBuilder.Free;
+    FWrapWidth := SavedWrap;   // always restore (covers early-exit paths)
   end;
 end;
+
+{ -------------------------------------------------------------------------
+  Value dispatcher
+  ------------------------------------------------------------------------- }
 
 procedure TTOMLSerializer.WriteValue(const AValue: TTOMLValue);
 var
@@ -814,8 +910,6 @@ begin
     tvtFloat:
       begin
         F := AValue.AsFloat;
-
-        // Handling special floating-point values
         if IsNan(F) then
           S := 'nan'
         else if IsInfinite(F) then
@@ -827,25 +921,18 @@ begin
         end
         else
         begin
-          // Use the original text first (to preserve the precision during parsing)
           if (AValue is TTOMLFloat) and (TTOMLFloat(AValue).RawString <> '') then
             S := TTOMLFloat(AValue).RawString
           else
           begin
-            // Intelligent precision: First try 15 bits,
-            // then switch to 17 bits if the round trip is inconsistent.
             S := FloatToStrF(F, ffGeneral, 15, 0, FFormatSettings);
             Val(S, CheckV, Code);
             if (Code <> 0) or (CheckV <> F) then
               S := FloatToStrF(F, ffGeneral, 17, 0, FFormatSettings);
           end;
-
-          // TOML specification: Floating-point literals must contain either '.' or 'e'.
-          // If neither of these exists (e.g., for integer patterns), then add ".0".
           if (Pos('.', S) = 0) and (Pos('e', LowerCase(S)) = 0) then
             S := S + '.0';
         end;
-
         FStringBuilder.Append(S);
       end;
 
@@ -862,10 +949,42 @@ begin
       WriteArray(AValue.AsArray);
 
     tvtTable, tvtInlineTable:
-      // Tables nested in value positions are always output in inline format.
       WriteTable(AValue.AsTable, True);
   end;
 end;
+
+{ -------------------------------------------------------------------------
+  GetSortedKeys
+  ------------------------------------------------------------------------- }
+
+function TTOMLSerializer.GetSortedKeys(const ATable: TTOMLTable): TArray<string>;
+var
+  AllKeys: TArray<string>;
+  i: Integer;
+begin
+  AllKeys := ATable.Items.Keys;
+  if not FPreserveComments then
+  begin
+    // Alphabetic sort (legacy behaviour)
+    var SortedList := TList<string>.Create;
+    try
+      for i := 0 to High(AllKeys) do
+        SortedList.Add(AllKeys[i]);
+      SortedList.Sort;
+      SetLength(Result, SortedList.Count);
+      for i := 0 to SortedList.Count - 1 do
+        Result[i] := SortedList[i];
+    finally
+      SortedList.Free;
+    end;
+  end
+  else
+    Result := AllKeys; // preserve insertion order
+end;
+
+{ -------------------------------------------------------------------------
+  Table serializer
+  ------------------------------------------------------------------------- }
 
 procedure TTOMLSerializer.WriteTable(const ATable: TTOMLTable; const AInline: Boolean);
 var
@@ -874,11 +993,11 @@ var
   i: Integer;
   ArrayValue: TTOMLArray;
   AllTables: Boolean;
-  SortedKeys: TList<string>;
+  SortedKeys: TArray<string>;
   K: string;
   V: TTOMLValue;
   SavedWrapWidth: Integer;
-  { Determine if the value is an "array table" (an array where all elements are TVtTable) }
+  ProbeBuilder: TStringBuilder;
 
   function IsArrayOfTables(Val: TTOMLValue): Boolean;
   var
@@ -902,140 +1021,366 @@ var
     end;
   end;
 
+  { Render AValue into ProbeBuilder (WrapWidth=0) and return its character
+    count.  Used only in the inline-table width-probe pass. }
+  function ProbeValueWidth(AValue: TTOMLValue): Integer;
+  var
+    SaveSB: TStringBuilder;
+    SaveWrap: Integer;
+  begin
+    SaveSB   := FStringBuilder;
+    SaveWrap := FWrapWidth;
+    FStringBuilder := ProbeBuilder;
+    FWrapWidth     := 0;
+    ProbeBuilder.Clear;
+    WriteValue(AValue);
+    Result         := ProbeBuilder.Length;
+    FStringBuilder := SaveSB;
+    FWrapWidth     := SaveWrap;
+  end;
+
+  { Render AKey into ProbeBuilder and return its character count. }
+  function ProbeKeyWidth(const AKey: string): Integer;
+  var
+    SaveSB: TStringBuilder;
+    SaveWrap: Integer;
+  begin
+    SaveSB   := FStringBuilder;
+    SaveWrap := FWrapWidth;
+    FStringBuilder := ProbeBuilder;
+    FWrapWidth     := 0;
+    ProbeBuilder.Clear;
+    WriteKey(AKey);
+    Result         := ProbeBuilder.Length;
+    FStringBuilder := SaveSB;
+    FWrapWidth     := SaveWrap;
+  end;
+
 begin
+  SortedKeys := GetSortedKeys(ATable);
+
   if AInline then
   begin
-    // ---- Inline table：{ key = value, ... } ----
-    // TOML spec: multi-line strings are not allowed inside inline tables.
-    FStringBuilder.Append('{');
-    First := True;
+    // ── Inline table: { key = value, ... } ──────────────────────────────────
+    //
+    // Multi-line is triggered by ANY of the following rules:
+    //
+    //   Rule 1 – Comments present (comments cannot survive on one line).
+    //            Checked when FPreserveComments = True.
+    //
+    //   Rule 2 – Wrap-width is set (SavedWrapWidth > 0) and the fully-
+    //            rendered single-line form would exceed that width.
+    //            Width = indent + "{ " + Σ(key + " = " + value) +
+    //                    (n-1) × ", " + " }"
+    //            Nested inline tables / arrays are probed at WrapWidth=0
+    //            (their single-line rendering) for the purpose of this
+    //            measurement.  If a nested value itself exceeds the wrap
+    //            width when rendered single-line, the probe naturally
+    //            produces a wide result and forces the outer table to
+    //            go multi-line; then when the outer table actually renders
+    //            its values with FWrapWidth still live, the inner value
+    //            will independently decide to go multi-line too.
+    //
+    // NOTE: FWrapWidth is NOT zeroed during actual value rendering so that
+    // nested inline tables / arrays receive the wrap-width signal and can
+    // independently split themselves.  Only the probe functions temporarily
+    // use WrapWidth=0 so that they always measure a compact single-line
+    // representation.
+    //
+    // "Word not split across lines": every key = value pair is an atomic
+    // unit that always occupies its own line in multi-line mode.
+
+    var NeedsMultiLine := False;
+
+    // Rule 1: comments
+    if FPreserveComments then
+    begin
+      if ATable.CommentTrailing <> '' then
+        NeedsMultiLine := True;
+      if not NeedsMultiLine then
+        for K in SortedKeys do
+        begin
+          V := nil;
+          ATable.TryGetValue(K, V);
+          if Assigned(V) and ((V.CommentBefore <> '') or (V.CommentInline <> '')) then
+          begin
+            NeedsMultiLine := True;
+            Break;
+          end;
+        end;
+    end;
+
     SavedWrapWidth := FWrapWidth;
-    FWrapWidth := 0;
-    SortedKeys := TList<string>.Create;
+
+    ProbeBuilder := TStringBuilder.Create;
     try
-      for K in ATable.Items.Keys do
-        SortedKeys.Add(K);
-      SortedKeys.Sort;
-      for K in SortedKeys do
+      // Rule 2: wrap-width — probe each entry using WrapWidth=0 so we get
+      // the compact single-line width of every value (including nested
+      // inline tables/arrays rendered without wrapping).
+      if not NeedsMultiLine and (SavedWrapWidth > 0) then
       begin
-        V := ATable.Items[K];
-        if not First then
-          FStringBuilder.Append(', ')
-        else
-          First := False;
+        // Width formula:
+        //   FIndentLevel*2          leading indent on the '{' line
+        //   + 1                     the '{' itself
+        //   + Σ( ", " + key + " = " + value )   (first entry has no ", ")
+        //   + 2                     " }"  closing
+        var TotalW   := FIndentLevel * 2 + 1 + 2;  // indent + '{' + ' }'
+        var EntryIdx := 0;
+        for K in SortedKeys do
+        begin
+          V := nil;
+          ATable.TryGetValue(K, V);
+          if not Assigned(V) then
+            Continue;
+          if EntryIdx > 0 then
+            Inc(TotalW, 2)    // ", "
+          else
+            Inc(TotalW, 1);   // space after '{'  → "{ "
+          Inc(TotalW, ProbeKeyWidth(K) + 3 + ProbeValueWidth(V));
+          Inc(EntryIdx);
+          if TotalW > SavedWrapWidth then
+          begin
+            NeedsMultiLine := True;
+            Break;
+          end;
+        end;
+      end;
+
+      if NeedsMultiLine then
+      begin
+        // ── Multi-line inline table ──────────────────────────────────────
+        //
+        //   {
+        //     key = value,   # CommentInline
+        //     lastkey = v,
+        //   }
+        //
+        // FWrapWidth is left at SavedWrapWidth so that nested inline tables
+        // and arrays inside WriteValue can also decide to go multi-line.
+
+        FStringBuilder.Append('{');
+        FStringBuilder.AppendLine;
+        Inc(FIndentLevel);
+
+        for K in SortedKeys do
+        begin
+          V := nil;
+          ATable.TryGetValue(K, V);
+          if not Assigned(V) then
+            Continue;
+
+          // CommentBefore block
+          if FPreserveComments and (V.CommentBefore <> '') then
+            WriteCommentBefore(V.CommentBefore);
+
+          // key = value,
+          WriteIndent;
+          WriteKey(K);
+          FStringBuilder.Append(' = ');
+          WriteValue(V);        // FWrapWidth = SavedWrapWidth — inner nesting works
+          FStringBuilder.Append(',');
+
+          // CommentInline after the comma
+          if FPreserveComments and (V.CommentInline <> '') then
+          begin
+            FStringBuilder.Append(' ');
+            FStringBuilder.Append(V.CommentInline);
+          end;
+
+          FStringBuilder.AppendLine;
+        end;
+
+        // CommentTrailing before '}'
+        if FPreserveComments and (ATable.CommentTrailing <> '') then
+          WriteCommentTrailing(ATable.CommentTrailing);
+
+        Dec(FIndentLevel);
+        WriteIndent;
+      end
+      else
+      begin
+        // ── Single-line inline table ─────────────────────────────────────
+        // Temporarily suppress wrapping so nested values also render
+        // single-line (consistent with the probe measurement above).
+        FWrapWidth := 0;
+        FStringBuilder.Append('{');
+        First := True;
+        for K in SortedKeys do
+        begin
+          V := nil;
+          ATable.TryGetValue(K, V);
+          if not Assigned(V) then
+            Continue;
+          if not First then
+            FStringBuilder.Append(', ')
+          else
+            First := False;
+          WriteKey(K);
+          FStringBuilder.Append(' = ');
+          WriteValue(V);
+        end;
+        FWrapWidth := SavedWrapWidth;
+      end;
+
+    finally
+      ProbeBuilder.Free;
+    end;
+
+    FStringBuilder.Append('}');
+    Exit;
+  end;
+
+  // ---- Standard Block Table ----
+
+  // Round 1: scalar key-value pairs (not sub-tables / array-of-tables)
+  for K in SortedKeys do
+  begin
+    V := nil;
+    ATable.TryGetValue(K, V);
+    if not Assigned(V) then
+      Continue;
+
+    //if (V.ValueType <> tvtTable) and not IsArrayOfTables(V) then
+    if ((V.ValueType <> tvtTable) or (V.AsTable.IsInline)) and not IsArrayOfTables(V) then
+    begin
+      // CommentBefore for this key-value
+      if FPreserveComments and (V.CommentBefore <> '') then
+        WriteCommentBefore(V.CommentBefore);
+
+      if (FWrapWidth > 0) and (V.ValueType = tvtString) then
+      begin
+        WriteIndent;
+        WriteKey(K);
+        FStringBuilder.Append(' = ');
+        WriteString(V.AsString);
+        if FPreserveComments and (V.CommentInline <> '') then
+          WriteCommentInline(V.CommentInline);
+        WriteLine;
+      end
+      else
+      begin
+        WriteIndent;
         WriteKey(K);
         FStringBuilder.Append(' = ');
         WriteValue(V);
+        if FPreserveComments and (V.CommentInline <> '') then
+          WriteCommentInline(V.CommentInline);
+        WriteLine;
       end;
-    finally
-      SortedKeys.Free;
-      FWrapWidth := SavedWrapWidth;
-    end;
-    FStringBuilder.Append('}');
-  end
-  else
-  begin
-    // ---- Standard Block Table ----
-    SortedKeys := TList<string>.Create;
-    try
-      for K in ATable.Items.Keys do
-        SortedKeys.Add(K);
-      SortedKeys.Sort;
-
-      // Round 1: Output all ordinary key-value pairs (not sublists, not arrays).
-      // The TOML specification requires that key-value pairs must appear
-      // before the header of the sub-table.
-      for K in SortedKeys do
-      begin
-        V := ATable.Items[K];
-        if (V.ValueType <> tvtTable) and (not IsArrayOfTables(V)) then
-        begin
-          // When wrapping is enabled, emit string values as multi-line basic
-          // strings (""") when they either:
-          //   (a) contain embedded newlines, or
-          //   (b) their escaped single-line form would exceed FWrapWidth.
-          // WriteString handles the same check internally, but we need to call
-          // WriteMultiLineString directly here so WriteIndent is issued first
-          // and the key prefix is written before the opening """.
-          if (FWrapWidth > 0) and (V.ValueType = tvtString) then
-          begin
-            WriteIndent;
-            WriteKey(K);
-            FStringBuilder.Append(' = ');
-            // WriteString will detect newlines / oversized length and call
-            // WriteMultiLineString automatically; we just invoke it uniformly.
-            WriteString(V.AsString);
-            WriteLine;
-          end
-          else
-          begin
-            WriteKey(K);
-            FStringBuilder.Append(' = ');
-            WriteValue(V);
-            WriteLine;
-          end;
-        end;
-      end;
-
-      // Second round: Output the array table [[key]] and the regular sub-table [key]
-      for K in SortedKeys do
-      begin
-        V := ATable.Items[K];
-
-        // Processing arrays [[key]]
-        if (V.ValueType = tvtArray) and (V.AsArray.Count > 0) then
-        begin
-          ArrayValue := V.AsArray;
-          AllTables := True;
-          for i := 0 to ArrayValue.Count - 1 do
-            if ArrayValue.GetItem(i).ValueType <> tvtTable then
-            begin
-              AllTables := False;
-              Break;
-            end;
-
-          if AllTables then
-          begin
-            for i := 0 to ArrayValue.Count - 1 do
-            begin
-              WriteLine;
-              WriteLine('[[' + BuildTablePath(K) + ']]');
-              FCurrentPath.Add(K);
-              WriteTable(ArrayValue.GetItem(i).AsTable);
-              FCurrentPath.Delete(FCurrentPath.Count - 1);
-            end;
-            Continue;
-          end;
-        end;
-
-        // Processing ordinary sub-tables [key]
-        if V.ValueType = tvtTable then
-        begin
-          SubTable := V.AsTable;
-          WriteLine;
-          WriteLine('[' + BuildTablePath(K) + ']');
-          if SubTable.Items.Count > 0 then
-          begin
-            FCurrentPath.Add(K);
-            WriteTable(SubTable);
-            FCurrentPath.Delete(FCurrentPath.Count - 1);
-          end;
-        end;
-      end;
-    finally
-      SortedKeys.Free;
     end;
   end;
+
+  // Round 2: array-of-tables [[key]] and regular sub-tables [key]
+  for K in SortedKeys do
+  begin
+    V := nil;
+    ATable.TryGetValue(K, V);
+    if not Assigned(V) then
+      Continue;
+
+    // Array of tables
+    if (V.ValueType = tvtArray) and (V.AsArray.Count > 0) then
+    begin
+      ArrayValue := V.AsArray;
+      AllTables := True;
+      for i := 0 to ArrayValue.Count - 1 do
+        if ArrayValue.GetItem(i).ValueType <> tvtTable then
+        begin
+          AllTables := False;
+          Break;
+        end;
+
+      if AllTables then
+      begin
+        for i := 0 to ArrayValue.Count - 1 do
+        begin
+          var SubTbl := ArrayValue.GetItem(i).AsTable;
+
+          // CommentBefore for [[header]]
+          if FPreserveComments and (SubTbl.CommentBefore <> '') then
+          begin
+            EnsureBlankLine;
+            WriteCommentBefore(SubTbl.CommentBefore);
+          end
+          else
+            EnsureBlankLine;
+
+          WriteIndent;
+          FStringBuilder.Append('[[');
+          FStringBuilder.Append(BuildTablePath(K));
+          FStringBuilder.Append(']]');
+          if FPreserveComments and (SubTbl.CommentInline <> '') then
+            WriteCommentInline(SubTbl.CommentInline);
+          FStringBuilder.AppendLine;
+
+          FCurrentPath.Add(K);
+          WriteTable(SubTbl);
+          FCurrentPath.Delete(FCurrentPath.Count - 1);
+        end;
+        Continue;
+      end;
+    end;
+
+    // Regular sub-table
+    //if V.ValueType = tvtTable then
+    if (V.ValueType = tvtTable) and not V.AsTable.IsInline then
+    begin
+      SubTable := V.AsTable;
+
+      // CommentBefore for [header]
+      if FPreserveComments and (SubTable.CommentBefore <> '') then
+      begin
+        EnsureBlankLine;
+        WriteCommentBefore(SubTable.CommentBefore);
+      end
+      else
+        EnsureBlankLine;
+
+      WriteIndent;
+      FStringBuilder.Append('[');
+      FStringBuilder.Append(BuildTablePath(K));
+      FStringBuilder.Append(']');
+      if FPreserveComments and (SubTable.CommentInline <> '') then
+        WriteCommentInline(SubTable.CommentInline);
+      FStringBuilder.AppendLine;
+
+      if SubTable.Items.Count > 0 then
+      begin
+        FCurrentPath.Add(K);
+        WriteTable(SubTable);
+        FCurrentPath.Delete(FCurrentPath.Count - 1);
+      end;
+    end;
+  end;
+
+  // CommentTrailing for the table (emitted AFTER all sub-section headers)
+  if FPreserveComments and (ATable.CommentTrailing <> '') then
+    WriteCommentTrailing(ATable.CommentTrailing);
 end;
 
-function TTOMLSerializer.Serialize(const AValue: TTOMLValue; AWrapWidth: Integer = 0): string;
+{ -------------------------------------------------------------------------
+  Public entry point
+  ------------------------------------------------------------------------- }
+
+function TTOMLSerializer.Serialize(const AValue: TTOMLValue; AWrapWidth: Integer; APreserveComments: Boolean): string;
 begin
   FStringBuilder.Clear;
   FCurrentPath.Clear;
   FWrapWidth := AWrapWidth;
+  FPreserveComments := APreserveComments;
 
   if AValue.ValueType = tvtTable then
-    WriteTable(AValue.AsTable, False)
+  begin
+    var RootTable := AValue.AsTable;
+    // File-header comment (stored as CommentBefore on the root table)
+    if FPreserveComments and (RootTable.CommentBefore <> '') then
+      WriteCommentBefore(RootTable.CommentBefore);
+
+    WriteTable(RootTable, False);
+
+    // File-footer comment is stored as CommentTrailing on the root table.
+    // WriteTable now emits it AFTER all sub-sections — nothing extra needed here.
+  end
   else
     WriteValue(AValue);
 
