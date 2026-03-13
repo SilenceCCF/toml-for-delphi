@@ -1,31 +1,21 @@
 { TOML.Helper.pas
-TOML auxiliary extension units, through class helpers,
-provide TTOMLLTable and TTOMLArray with...
-Provides a simpler and more secure read/write API.
+  TOML auxiliary extension unit.
+  Provides TTOMLTableHelper and TTOMLArrayHelper class helpers with a rich
+  read/write/chain API.  Adapted for the ordered-table (TTOMLOrderedTable)
+  and comment-property additions introduced in TOML.Types.
 
-Main functions:
-- TTOMLTableHelper: Reading (GetXxx / TryGetXxx) and writing (SetXxx) tables.
-  Chained calls (Put), file operations (LoadFromFile / SaveToFile),
-  Key management (HasKey / GetKeys / Remove / Clear / Clone / Count),
-  File and String Operations (ToString / SaveToFile / LoadFromFile),
-  About JSON (ToJSON / SaveToJSONFile / LoadFromJson / LoadFromJsonFile)
-- TTOMLArrayHelper: Reads array elements (GetXxx / TryGetXxx) and appends/insert/writing
-  them (AddXxx / InsertXxx / SetXxx).
-Traversal (ForEachTable), removal (RemoveAt / Clear), etc.
-
-Global factory function:
-- NewTable / NewArray: Create an empty object
-- LoadTOML: Loads from a file; returns nil on error.
-- ParseTOML: Parses a string, returns nil on error.
-- TryParseTOML: Parses a string and returns a Boolean result.
-
-Path navigation (internal helper function):
-- SplitPath: Splits paths enclosed in quotes and periods
-  (supports "a".bc".d format)
-- NavigateToTable: Navigate to the target table along the path.
-- GetValueFromPath: Retrieves the value along the path.
-- SetValueAtPath: Writes a value along the path
-  (intermediate levels that do not exist will be created automatically).
+  Changes from the original:
+    - TTOMLTableHelper methods use FItems.AddOrSetValue where direct dictionary
+      access was previously used, so the ordered-table contract is respected.
+    - SetValueAtPath creates intermediate tables via TTOMLTable.Add (ordered).
+    - GetKeys enumerates keys in insertion order via Items.Keys.
+    - Clone / LoadFromString / LoadFromFile copy entries in insertion order.
+    - ParseTOML / LoadTOML wrappers forward APreserveComments when needed.
+    - TTOMLTable.Clear / TTOMLTableHelper.Clear free values through the ordered
+      table API.
+    - Comment properties (CommentBefore, CommentInline, CommentTrailing) are
+      accessible on any TTOMLValue, so callers can manipulate them directly
+      without any extra helper methods.
 }
 unit TOML.Helper;
 
@@ -35,113 +25,58 @@ uses
   SysUtils, Classes, Generics.Collections, TOML.Types, TOML.Parser, TOML.Serializer, TOML.JSON;
 
 type
-  { TOML Table Assistant – Adding convenient read and write operations to TTOMLTable }
+  { =========================================================================
+    TTOMLTableHelper
+    ========================================================================= }
   TTOMLTableHelper = class helper for TTOMLTable
   public
-    { ===== Read method ===== }
-
-    { Read string values, supporting dotted paths (e.g., "server.host")
-      @param Key Key name or dotted path
-      @param DefaultValue The default value returned when the key does not exist.
-      @returns string value or default value }
+    { ----- Read ----- }
     function GetStr(const Key: string; const DefaultValue: string = ''): string;
     function TryGetStr(const Key: string; out Value: string): Boolean;
 
-    { Read integer values (supports dotted paths) }
     function GetInt(const Key: string; const DefaultValue: Int64 = 0): Int64;
     function TryGetInt(const Key: string; out Value: Integer): Boolean;
 
-    { Read floating-point values (supports dot path) }
     function GetFloat(const Key: string; const DefaultValue: Double = 0.0): Double;
     function TryGetFloat(const Key: string; out Value: Double): Boolean;
 
-    { Read the raw text of floating-point numbers (preserving the exact
-      representation in the TOML file, such as "3.14", "6.626e-34", "inf")
-      Difference from GetFloat: GetFloat returns the converted Double,
-      which may suffer from precision loss due to IEEE 754;
-      GetFloatValue returns the raw string from the file, which can be safely
-      used for display or high-precision scenarios. @param DefaultValue The default value returned when the key does not exist or is not a floating-point type. }
+    { Raw float text (preserves exact TOML representation) }
     function GetFloatValue(const Key: string; const DefaultValue: string = ''): string;
     function TryGetFloatValue(const Key: string; out Value: string): Boolean;
 
-    { Read Boolean values (supports dotted paths) }
     function GetBool(const Key: string; const DefaultValue: Boolean = False): Boolean;
     function TryGetBool(const Key: string; out Value: Boolean): Boolean;
 
-    { Read date and time value (returns TDateTime) }
     function GetDateTime(const Key: string; const DefaultValue: TDateTime = 0): TDateTime;
     function TryGetDateTime(const Key: string; out Value: TDateTime): Boolean;
 
-    { Read date and time values (returns the raw string, preserving the exact format) }
+    { Raw datetime text }
     function GetDateTimeValue(const Key: string; const DefaultValue: string = ''): string;
     function TryGetDateTimeValue(const Key: string; out Value: string): Boolean;
 
-    { Get array reference; return nil if it does not exist. }
     function GetArray(const Key: string): TTOMLArray;
     function TryGetArray(const Key: string; out Value: TTOMLArray): Boolean;
 
-    { Retrieves a reference to the sub-table; returns nil if it does not exist. }
     function GetTable(const Key: string): TTOMLTable;
     function TryGetTable(const Key: string; out Value: TTOMLTable): Boolean;
 
-    { Check if the key exists (supports dotted paths) }
     function HasKey(const Key: string): Boolean;
 
-    { Get all key names
-      @param Keys The list of keys to be output (does not need to be cleared
-      before calling, it will be cleared inside the method).
-      @param Recursive Whether to recursively enumerate the keys of child tables
-      (prefixed with the parent key, such as "server.host") }
+    { Enumerate keys (insertion order). }
     procedure GetKeys(Keys: TStrings; Recursive: Boolean = False);
 
-    { ===== Write methods (including overwrite control) ===== }
-
-    { Write string value }
+    { ----- Write ----- }
     function SetStr(const Key: string; const Value: string; Overwrite: Boolean = True): Boolean;
-
-    { Write integer value }
     function SetInt(const Key: string; const Value: Int64; Overwrite: Boolean = True): Boolean;
-
-    { Write float value }
     function SetFloat(const Key: string; const Value: Double; Overwrite: Boolean = True): Boolean;
-
-    { Writes the raw text of the floating-point number (directly stores the specified string
-      representation without Double conversion).
-      Suitable for scenarios that require precise control over the TOML output format, such as
-      retaining "6.626e-34", "inf", and "nan".
-      @param RawValue The raw text, which must be a valid TOML floating-point number representation.
-      @returns True: If the write is successful，False: If the key already exists and Overwrite=False }
     function SetFloatValue(const Key: string; const RawValue: string; Overwrite: Boolean = True): Boolean;
-
-    { Write Boolean value }
     function SetBool(const Key: string; const Value: Boolean; Overwrite: Boolean = True): Boolean;
-
-    { Write DateTime value }
     function SetDateTime(const Key: string; const Value: TDateTime; Overwrite: Boolean = True): Boolean;
-
-    { Write the raw text of the date and time (directly store the specified string representation
-      without TDateTime conversion).
-      The original text must conform to the TOML 1.1.0 specification
-      and supports the following four formats (Seconds can be omitted):
-        "1979-05-27T07:32:00Z"          Date and time with time zone offset
-        "1979-05-27T07:32:00.999999"    Local date and time (including decimal seconds)
-        "1979-05-27"                    Local date
-        "07:32:00"                      Local time
-      Returns False if the format is invalid.
-      @param RawValue: The original text must be a valid TOML date and time literal.
-      @returns True: If successful write; False: If the format is invalid or the key already exists and Overwrite=False }
     function SetDateTimeValue(const Key: string; const RawValue: string; Overwrite: Boolean = True): Boolean;
-
-    { Write to an array (ownership is transferred on success, and the caller retains ownership on failure).
-      @returns True: If successful write; False: If the key already exists and Overwrite=False }
     function SetArray(const Key: string; Value: TTOMLArray; Overwrite: Boolean = True): Boolean;
-
-    { Write to the sub-table (ownership transferred on success, ownership retained by the caller on failure) }
     function SetTable(const Key: string; Value: TTOMLTable; Overwrite: Boolean = True): Boolean;
 
-    { ===== Chained write (Builder pattern) ===== }
-
-    { Chained writing of strings, returning Self to support consecutive calls. }
+    { ----- Builder (chain) ----- }
     function Put(const Key: string; const Value: string; Overwrite: Boolean = True): TTOMLTable; overload;
     function Put(const Key: string; const Value: Int64; Overwrite: Boolean = True): TTOMLTable; overload;
     function Put(const Key: string; const Value: Integer; Overwrite: Boolean = True): TTOMLTable; overload;
@@ -151,90 +86,40 @@ type
     function Put(const Key: string; Value: TTOMLArray; Overwrite: Boolean = True): TTOMLTable; overload;
     function Put(const Key: string; Value: TTOMLTable; Overwrite: Boolean = True): TTOMLTable; overload;
 
-    { ===== File operations ===== }
-
-    { Load TOML data from a file into this table.
-      @param ClearExisting: If True, the current content will be cleared first.
-      @returns}
+    { ----- File / string I/O ----- }
     function LoadFromFile(const FileName: string; ClearExisting: Boolean = True): Boolean;
-
-    { Load TOML data from a string into this table.
-      @param ClearExisting: If True, the current content will be cleared first.
-      @returns True }
     function LoadFromString(const ATOML: string; ClearExisting: Boolean = True): Boolean;
+    function SaveToFile(const FileName: string; WriteBOM: Boolean = True; AWrapWidth: Integer = 0;
+      APreserveComments: Boolean = False): Boolean;
 
-    { Serialize this table and save it to a file.
-      @param WriteBOM: Whether to write to a UTF-8 BOM
-      @returns }
-    function SaveToFile(const FileName: string; WriteBOM: Boolean = True; AWrapWidth: Integer = 0): Boolean;
+    { ----- Serialization ----- }
+    function toString(AWrapWidth: Integer = 0; APreserveComments: Boolean = False): string; reintroduce;
 
-    { ===== Serialization ===== }
-
-    { Serialize this table into a TOML string; return an empty string on error. }
-    function toString(AWrapWidth: Integer = 0): string; reintroduce;
-
-    { ===== Tools and methods ===== }
-
-    { Delete specified key
-      @param FreeValue: When True, the corresponding value object is also released.
-      @returns: True: If the key exists and has been deleted; False: If the key does not exist. }
+    { ----- Tools ----- }
     function Remove(const Key: string; FreeValue: Boolean = True): Boolean;
-
-    { Clear all key-value pairs in the table
-      @param FreeValues: When True, all value objects are released simultaneously. }
     procedure Clear(FreeValues: Boolean = True);
-
-    { Return the number of key-value pairs in the table. }
     function Count: Integer;
-
-    { Deep clone this table (achieved through serialization and then parsing; returns nil on error). }
     function Clone: TTOMLTable;
 
-    { ===== TOML and JSON conversion ===== }
-
-    { Serialize this table into a JSON string.
-      @param APretty: Output beautiful format with indentation when true (default True)
-      @param AIndentSize: Number of spaces per indentation level (default 2)
-      @returns JSON string; returns an empty string on error. }
+    { ----- JSON ----- }
     function ToJSON(APretty: Boolean = True; AIndentSize: Integer = 2): string;
-
-    { Load data from a JSON string (overwriting the current content).
-      @param AJSON              Valid JSON object string
-      @param ANullAsEmptyString When True, writes an empty string to the JSON null value.
-                                Ignore null keys when set to False (default is False)
-      @returns }
     function LoadFromJSON(const AJSON: string; ANullAsEmptyString: Boolean = False): Boolean;
-
-    { Serialize this table into JSON and write it to a file.
-      @param FileName    Target file path
-      @param APretty     Whether to perform aesthetic indentation
-      @param ABOM        Whether to write a UTF-8 BOM (JSON files usually do not include a BOM)
-      @returns }
     function SaveToJSONFile(const FileName: string; APretty: Boolean = True; ABOM: Boolean = False): Boolean;
-
-    { Load data from a JSON file (overwriting current content)
-      @param FileName           Source JSON file path
-      @param ANullAsEmptyString null handling strategy (same as LoadFromJSON)
-      @returns }
     function LoadFromJSONFile(const FileName: string; ANullAsEmptyString: Boolean = False): Boolean;
   end;
-  { TOML Array Helper – Adds convenient read and write operations to TTOMLArray }
 
+  { =========================================================================
+    TTOMLArrayHelper
+    ========================================================================= }
   TTOMLArrayHelper = class helper for TTOMLArray
   public
-    { ===== Read method ===== }
-
+    { ----- Read ----- }
     function GetStr(Index: Integer; const DefaultValue: string = ''): string;
     function TryGetStr(Index: Integer; out Value: string): Boolean;
     function GetInt(Index: Integer; const DefaultValue: Int64 = 0): Int64;
     function TryGetInt(Index: Integer; out Value: Integer): Boolean;
     function GetFloat(Index: Integer; const DefaultValue: Double = 0.0): Double;
     function TryGetFloat(Index: Integer; out Value: Double): Boolean;
-    { Get the raw text of floating-point numbers
-      (preserving the exact representation in the TOML file)
-      @param DefaultValue: The default value is returned
-       when the index is out of bounds or the element
-       is not a floating-point type. }
     function GetFloatValue(Index: Integer; const DefaultValue: string = ''): string;
     function TryGetFloatValue(Index: Integer; out Value: string): Boolean;
     function GetBool(Index: Integer; const DefaultValue: Boolean = False): Boolean;
@@ -243,172 +128,73 @@ type
     function TryGetDateTime(Index: Integer; out Value: TDateTime): Boolean;
     function GetDateTimeValue(Index: Integer; const DefaultValue: string = ''): string;
     function TryGetDateTimeValue(Index: Integer; out Value: string): Boolean;
-    { Retrieves the table element at the specified index;
-      returns nil if the element does not exist or its type does not match. }
     function GetTable(Index: Integer): TTOMLTable;
     function TryGetTable(Index: Integer; out Value: TTOMLTable): Boolean;
-    { Securely retrieve the element at the specified index
-      @param Value: Output parameters, return the corresponding element on success.
-      @returns }
     function TryGetItem(Index: Integer; out Value: TTOMLValue): Boolean;
-
-    { Iterate through all table-type elements in the array
-      @param Proc: Anonymous procedure performed for each TTOMLTable }
-//    procedure ForEachTable(Proc: TProc<TTOMLTable>);
     function GetArray(Index: Integer): TTOMLArray;
     function TryGetArray(Index: Integer; out Value: TTOMLArray): Boolean;
-    { == Add method (returns Self, supports chaining, returns nil on error) == }
 
+    { ----- Add (chain, nil on error) ----- }
     function AddStr(const Value: string): TTOMLArray;
     function AddInt(const Value: Int64): TTOMLArray;
     function AddFloat(const Value: Double): TTOMLArray;
-
-    { Add raw text to floating-point numbers
-      (directly store the specified string representation,
-       suitable for precision-sensitive or special value scenarios).
-      @param RawValue: The original text must be a valid TOML floating-point
-       representation (such as "6.626e-34", "inf"). }
     function AddFloatValue(const RawValue: string): TTOMLArray;
-
     function AddBool(const Value: Boolean): TTOMLArray;
     function AddDateTime(const Value: TDateTime): TTOMLArray;
-
-    { Add raw text of date and time
-     (directly store the specified string representation,
-      with the same formatting rules as SetDateTimeValue).
-      Returning nil when the format is invalid allows
-      the caller to determine whether the call was successful. }
     function AddDateTimeValue(const RawValue: string): TTOMLArray;
-
-    { Add table element (transfer ownership)
-      @note If nil is returned, the caller retains ownership of Value
-       and must release it manually. }
     function AddTable(Value: TTOMLTable): TTOMLArray;
-
-    { Add nested array elements (transfer ownership) }
     function AddArray(Value: TTOMLArray): TTOMLArray;
 
-    { == Set method == }
-
-    {Modify the string value at the specified index}
+    { ----- Set ----- }
     function SetStr(Index: Integer; const Value: string): Boolean;
-
-    { Modify the integer value at the specified index }
     function SetInt(Index: Integer; const Value: Int64): Boolean;
-
-    { Modify the float value at the specified index }
     function SetFloat(Index: Integer; const Value: Double): Boolean;
-
-    { Modify the original text of the floating-point number at the specified index. }
     function SetFloatValue(Index: Integer; const RawValue: string): Boolean;
-
-    { Modify the boolean value at the specified index }
     function SetBool(Index: Integer; const Value: Boolean): Boolean;
-
-    { Modify the datetime value at the specified index }
     function SetDateTime(Index: Integer; const Value: TDateTime): Boolean;
-
-    { Modify the original text of the datetime at the specified index. }
     function SetDateTimeValue(Index: Integer; const RawValue: string): Boolean;
-
-    { Modify the array at the specified index }
     function SetArray(Index: Integer; Value: TTOMLArray): Boolean;
-
-    { Modify the table at the specified index }
     function SetTable(Index: Integer; Value: TTOMLTable): Boolean;
 
-    { ===== Insert methods ===== }
-
-    { Insert a string value at the specified index position.
-      @param Index The insertion position (0 for the beginning, Count for the end).
-      @param Value The value to be inserted.
-      @returns True Success; False Index out of bounds }
+    { ----- Insert ----- }
     function InsertStr(Index: Integer; const Value: string): Boolean;
-
-    { Insert a integer value at the specified index position. }
     function InsertInt(Index: Integer; const Value: Int64): Boolean;
-
-    { Insert a float value at the specified index position. }
     function InsertFloat(Index: Integer; const Value: Double): Boolean;
-
-    { Insert raw floating-point number text at the specified position }
     function InsertFloatValue(Index: Integer; const RawValue: string): Boolean;
-
-    { Insert a boolean value at the specified index position. }
     function InsertBool(Index: Integer; const Value: Boolean): Boolean;
-
-    { Insert a datetime value at the specified index position. }
     function InsertDateTime(Index: Integer; const Value: TDateTime): Boolean;
-
-    { Insert raw date and time text at the specified location. }
     function InsertDateTimeValue(Index: Integer; const RawValue: string): Boolean;
-
-    { Insert an array at a specified position (ownership transfer) }
     function InsertArray(Index: Integer; Value: TTOMLArray): Boolean;
-
-    { Insert a table (ownership transfer) at the specified location. }
     function InsertTable(Index: Integer; Value: TTOMLTable): Boolean;
 
-    { ===== Serialization ===== }
-
-    { Serialize this array into a TOML string; return an empty string on error.}
+    { ----- Serialization ----- }
     function toString: string; reintroduce;
 
-    { ===== Tool methods ===== }
-
-    { Empty all elements in the array
-      @param FreeItems: True to release all element objects at the same time }
+    { ----- Tools ----- }
     procedure Clear(FreeItems: Boolean = True);
-
-    { Delete elements at the specified index
-      @param FreeItem When True, the deleted element objects are also released.
-      @returns }
     function RemoveAt(Index: Integer; FreeItem: Boolean = True): Boolean;
 
-    { ===== Traversal methods ===== }
-    { Iterate through all table type elements (simplified version) }
+    { ----- Traversal ----- }
     procedure ForEachTable(Proc: TProc<TTOMLTable>); overload;
-
-    { Iterate through all table type elements
-      @param Callback: The callback function that receives the index and table reference,
-                       and returns False to prematurely end the iteration.
-      @param SkipNonTables If True, skip non-table elements;
-             otherwise, stop when a non-table element is encountered. }
     procedure ForEachTable(Callback: TFunc<Integer, TTOMLTable, Boolean>; SkipNonTables: Boolean = True); overload;
-
   end;
 
-{ ===== Global factory function ===== }
-
-{ Create an empty TOML table }
+{ ---- Global factory / parse helpers ---- }
 function NewTable: TTOMLTable;
-{ Create an empty TOML array }
 
 function NewArray: TTOMLArray;
-{ Load TOML from file, return nil when error occurs (no exception thrown) }
 
-function LoadTOML(const FileName: string): TTOMLTable;
-{ Parse TOML from string, return nil on error (no exception thrown) }
+function LoadTOML(const FileName: string; APreserveComments: Boolean = False): TTOMLTable;
 
-function ParseTOML(const ATOML: string): TTOMLTable;
-{ Parsing TOML from a string
-  @param Config: Returns the parsing result on success, and nil on failure.
-  @returns }
+function ParseTOML(const ATOML: string; APreserveComments: Boolean = False): TTOMLTable;
 
-function TryParseTOML(const ATOML: string; out Config: TTOMLTable): Boolean;
-{ == Path helper functions (for internal use, but can also be called externally). == }
+function TryParseTOML(const ATOML: string; out Config: TTOMLTable; APreserveComments: Boolean = False):
+  Boolean;
 
-{ Split the dot path with quotation marks and correctly handle the dots
-  within the quotation marks
-  Example：site."tt.com".owner -> ["site", "tt.com", "owner"] }
-
+{ ---- Path helpers (internal, also publicly callable) ---- }
 function SplitPath(const Path: string): TArray<string>;
-{ Navigate to the target table along the dotted path;
-  return nil if the table does not exist. }
 
 function NavigateToTable(Root: TTOMLTable; const Path: string): TTOMLTable;
-{ Retrieve the value along the dotted path;
-  return nil if the value does not exist. }
 
 function GetValueFromPath(Root: TTOMLTable; const Path: string): TTOMLValue;
 
@@ -416,7 +202,10 @@ implementation
 
 uses
   StrUtils, Math;
-{ ===== Global factory function implementation ===== }
+
+{ =========================================================================
+  Global helpers
+  ========================================================================= }
 
 function NewTable: TTOMLTable;
 begin
@@ -428,80 +217,74 @@ begin
   Result := TTOMLArray.Create;
 end;
 
-function LoadTOML(const FileName: string): TTOMLTable;
+function LoadTOML(const FileName: string; APreserveComments: Boolean): TTOMLTable;
 begin
   try
-    Result := TOML.Parser.ParseTOMLFile(FileName);
+    Result := TOML.Parser.ParseTOMLFile(FileName, APreserveComments);
   except
     Result := nil;
   end;
 end;
 
-function ParseTOML(const ATOML: string): TTOMLTable;
+function ParseTOML(const ATOML: string; APreserveComments: Boolean): TTOMLTable;
 begin
   try
-    Result := TOML.Parser.ParseTOMLString(ATOML);
+    Result := TOML.Parser.ParseTOMLString(ATOML, APreserveComments);
   except
     Result := nil;
   end;
 end;
 
-function TryParseTOML(const ATOML: string; out Config: TTOMLTable): Boolean;
+function TryParseTOML(const ATOML: string; out Config: TTOMLTable; APreserveComments: Boolean): Boolean;
 begin
   try
-    Config := TOML.Parser.ParseTOMLString(ATOML);
+    Config := TOML.Parser.ParseTOMLString(ATOML, APreserveComments);
     Result := Assigned(Config);
   except
     Config := nil;
     Result := False;
   end;
 end;
-{ ===== Path helper function implementation ===== }
+
+{ =========================================================================
+  Path helpers
+  ========================================================================= }
 
 function SplitPath(const Path: string): TArray<string>;
 var
   Parts: TList<string>;
   Current: string;
   i: Integer;
-  InBasic, InLiteral: Boolean;
+  InBasic: Boolean;
+  InLiteral: Boolean;
   Ch: Char;
 begin
-  { Split dotted paths and correctly handle segments enclosed
-    in double and single quotes.
-    The quotation mark character itself is not included in the output segment.
-    Example：site."tt.com".owner -> ["site", "tt.com", "owner"] }
   Parts := TList<string>.Create;
   try
     Current := '';
     InBasic := False;
     InLiteral := False;
-
     for i := 1 to Length(Path) do
     begin
       Ch := Path[i];
-
       if (Ch = '"') and not InLiteral then
       begin
         InBasic := not InBasic;
-        Continue; // Do not add quotation marks to the current paragraph
+        Continue;
       end;
-
       if (Ch = '''') and not InBasic then
       begin
         InLiteral := not InLiteral;
         Continue;
       end;
-
       if (Ch = '.') and not InBasic and not InLiteral then
       begin
         Parts.Add(Current);
         Current := '';
         Continue;
       end;
-
       Current := Current + Ch;
     end;
-
     Parts.Add(Current);
     SetLength(Result, Parts.Count);
     for i := 0 to Parts.Count - 1 do
@@ -521,23 +304,18 @@ begin
   Result := nil;
   if not Assigned(Root) then
     Exit;
-
-  // An empty path directly returns the root table.
   if Path = '' then
   begin
     Result := Root;
     Exit;
   end;
-
   try
     Parts := SplitPath(Path);
     CurrentTable := Root;
-
     for i := 0 to High(Parts) do
     begin
       if not CurrentTable.TryGetValue(Parts[i], Value) then
         Exit;
-
       if Value is TTOMLTable then
         CurrentTable := TTOMLTable(Value)
       else if (Value is TTOMLArray) and (i < High(Parts)) then
@@ -550,7 +328,6 @@ begin
       else
         Exit;
     end;
-
     Result := CurrentTable;
   except
     Result := nil;
@@ -575,7 +352,6 @@ begin
     if Root.TryGetValue(CleanKey, Result) then
       Exit;
   end;
-
   try
     Parts := SplitPath(Path);
     if Length(Parts) = 0 then
@@ -587,7 +363,6 @@ begin
       if (Length(CleanKey) >= 2) and (((CleanKey[1] = '"') and (CleanKey[Length(CleanKey)] = '"')) or ((CleanKey
         [1] = '''') and (CleanKey[Length(CleanKey)] = ''''))) then
         CleanKey := Copy(CleanKey, 2, Length(CleanKey) - 2);
-
       if not CurrentTable.TryGetValue(CleanKey, Val) then
       begin
         Result := nil;
@@ -615,14 +390,9 @@ begin
     Result := nil;
   end;
 end;
-{ ===== Write path helper functions (for internal use) ===== }
 
-{ Navigate along Parts[0..High-1] (non-existent intermediate
-  levels are automatically created as tables).
-  Then write NewValue at Parts[High].
-  Returns True on success; on failure,
-  NewValue is not released and is handled by the caller. }
-
+{ Write a value at the given path (creates intermediate tables as needed).
+  Ownership of NewValue is transferred on success; caller retains it on failure. }
 function SetValueAtPath(Root: TTOMLTable; const Parts: TArray<string>; NewValue: TTOMLValue; Overwrite:
   Boolean): Boolean;
 var
@@ -635,7 +405,6 @@ begin
   Result := False;
   if (Length(Parts) = 0) or not Assigned(Root) then
     Exit;
-
   CurrentTable := Root;
   for i := 0 to High(Parts) - 1 do
   begin
@@ -663,18 +432,19 @@ begin
   end;
 
   LastKey := Parts[High(Parts)];
-
   if CurrentTable.Items.TryGetValue(LastKey, ExistingValue) then
   begin
     if not Overwrite then
       Exit(False);
     ExistingValue.Free;
   end;
-
   CurrentTable.Items.AddOrSetValue(LastKey, NewValue);
   Result := True;
 end;
-{ ===== TTOMLTableHelper —— Read method implementation ===== }
+
+{ =========================================================================
+  TTOMLTableHelper — Read
+  ========================================================================= }
 
 function TTOMLTableHelper.GetStr(const Key: string; const DefaultValue: string): string;
 var
@@ -944,49 +714,44 @@ end;
 
 procedure TTOMLTableHelper.GetKeys(Keys: TStrings; Recursive: Boolean);
 var
-  Pair: TPair<string, TTOMLValue>;
+  AllKeys: TArray<string>;
+  K: string;
   SubTable: TTOMLTable;
   SubKeys: TStringList;
   i: Integer;
+  V: TTOMLValue;
 begin
   if not Assigned(Keys) then
     Exit;
   try
     Keys.Clear;
-    for Pair in Self.Items do
+    AllKeys := Self.Items.Keys;
+    for K in AllKeys do
     begin
-      Keys.Add(Pair.Key);
-      if Recursive and (Pair.Value is TTOMLTable) then
+      Keys.Add(K);
+      if Recursive then
       begin
-        SubTable := TTOMLTable(Pair.Value);
-        SubKeys := TStringList.Create;
-        try
-          SubTable.GetKeys(SubKeys, True);
-          for i := 0 to SubKeys.Count - 1 do
-            Keys.Add(Pair.Key + '.' + SubKeys[i]);
-        finally
-          SubKeys.Free;
+        if Self.TryGetValue(K, V) and (V is TTOMLTable) then
+        begin
+          SubTable := TTOMLTable(V);
+          SubKeys := TStringList.Create;
+          try
+            SubTable.GetKeys(SubKeys, True);
+            for i := 0 to SubKeys.Count - 1 do
+              Keys.Add(K + '.' + SubKeys[i]);
+          finally
+            SubKeys.Free;
+          end;
         end;
       end;
     end;
   except
-    // Silent failure, maintaining interface robustness
   end;
 end;
 
-function TTOMLTableHelper.Clone: TTOMLTable;
-var
-  ATOML: string;
-begin
-  // Deep cloning achieved through serialization and re-parsing.
-  try
-    ATOML := Self.ToString;
-    Result := ParseTOML(ATOML);
-  except
-    Result := nil;
-  end;
-end;
-{ ===== TTOMLTableHelper —— Write method implementation ===== }
+{ =========================================================================
+  TTOMLTableHelper — Write
+  ========================================================================= }
 
 function TTOMLTableHelper.SetStr(const Key: string; const Value: string; Overwrite: Boolean): Boolean;
 var
@@ -1036,9 +801,6 @@ var
   FS: TFormatSettings;
   F: Double;
 begin
-  { Parse the original text into a Double while preserving the original text.
-    This ensures that the format in RawValue is accurately restored during serialization.
-    Special values ​​inf / +inf / -inf / nan are handled according to TOML specifications. }
   try
     FS := TFormatSettings.Invariant;
     if SameText(RawValue, 'inf') or SameText(RawValue, '+inf') then
@@ -1049,7 +811,6 @@ begin
       F := NaN
     else if not TryStrToFloat(RawValue, F, FS) then
       raise ETOMLException.CreateFmt('SetFloatValue: "%s" is not a valid TOML float', [RawValue]);
-
     NewValue := TTOMLFloat.Create(F, RawValue);
     Result := SetValueAtPath(Self, SplitPath(Key), NewValue, Overwrite);
     if not Result then
@@ -1093,24 +854,18 @@ var
   RawVal: TTOMLValue;
   NewValue: TTOMLDateTime;
 begin
-  { The original text is wrapped into complete TOML lines,
-    and the Parser is delegated to perform format validation and parsing.
-    At the same time, retain the RawString to ensure that it is restored
-    exactly as it was during serialization. }
   try
-    Temp := ParseTOMLString('__dt__ = ' + RawValue);
+    Temp := TOML.Parser.ParseTOMLString('__dt__ = ' + RawValue);
     try
       if not Temp.TryGetValue('__dt__', RawVal) then
-        raise ETOMLParserException.Create('SetDateTimeValue: parse returned no value');
+        raise ETOMLParserException.Create('SetDateTimeValue: no value returned');
       if not (RawVal is TTOMLDateTime) then
-        raise ETOMLParserException.CreateFmt('SetDateTimeValue: "%s" is not a TOML datetime literal', [RawValue]);
-
+        raise ETOMLParserException.CreateFmt('SetDateTimeValue: "%s" is not a datetime', [RawValue]);
       NewValue := TTOMLDateTime.Create(TTOMLDateTime(RawVal).Value, RawValue, TTOMLDateTime(RawVal).Kind,
         TTOMLDateTime(RawVal).TimeZoneOffset);
     finally
       Temp.Free;
     end;
-
     Result := SetValueAtPath(Self, SplitPath(Key), NewValue, Overwrite);
     if not Result then
       NewValue.Free;
@@ -1142,7 +897,10 @@ begin
     Result := False;
   end;
 end;
-{ ===== TTOMLTableHelper —— Builder pattern implementation ===== }
+
+{ =========================================================================
+  TTOMLTableHelper — Builder
+  ========================================================================= }
 
 function TTOMLTableHelper.Put(const Key: string; const Value: string; Overwrite: Boolean): TTOMLTable;
 begin
@@ -1191,27 +949,30 @@ begin
   SetTable(Key, Value, Overwrite);
   Result := Self;
 end;
-{ ===== TTOMLTableHelper —— File operation implementation ===== }
+
+{ =========================================================================
+  TTOMLTableHelper — File / string I/O
+  ========================================================================= }
 
 function TTOMLTableHelper.LoadFromFile(const FileName: string; ClearExisting: Boolean): Boolean;
 var
-  LoadedTable: TTOMLTable;
-  Pair: TPair<string, TTOMLValue>;
+  Loaded: TTOMLTable;
+  i: Integer;
 begin
   Result := False;
   try
-    LoadedTable := TOML.Parser.ParseTOMLFile(FileName);
-    if not Assigned(LoadedTable) then
+    Loaded := TOML.Parser.ParseTOMLFile(FileName);
+    if not Assigned(Loaded) then
       Exit;
     try
       if ClearExisting then
         Self.Clear(True);
-      for Pair in LoadedTable.Items do
-        Self.Items.Add(Pair.Key, Pair.Value);
-      LoadedTable.Items.Clear;
+      for i := 0 to Loaded.Items.Count - 1 do
+        Self.Items.AddOrSetValue(Loaded.Items.GetKey(i), Loaded.Items.GetValue(i));
+      Loaded.Items.Clear; // don't free values — ownership transferred
       Result := True;
     finally
-      LoadedTable.Free;
+      Loaded.Free;
     end;
   except
     Result := False;
@@ -1220,48 +981,55 @@ end;
 
 function TTOMLTableHelper.LoadFromString(const ATOML: string; ClearExisting: Boolean): Boolean;
 var
-  LoadedTable: TTOMLTable;
-  Pair: TPair<string, TTOMLValue>;
+  Loaded: TTOMLTable;
+  i: Integer;
 begin
   Result := False;
   try
-    LoadedTable := TOML.Parser.ParseTOMLString(ATOML);
-    if not Assigned(LoadedTable) then
+    Loaded := TOML.Parser.ParseTOMLString(ATOML);
+    if not Assigned(Loaded) then
       Exit;
     try
       if ClearExisting then
         Self.Clear(True);
-      for Pair in LoadedTable.Items do
-        Self.Items.Add(Pair.Key, Pair.Value);
-      LoadedTable.Items.Clear;
+      for i := 0 to Loaded.Items.Count - 1 do
+        Self.Items.AddOrSetValue(Loaded.Items.GetKey(i), Loaded.Items.GetValue(i));
+      Loaded.Items.Clear;
       Result := True;
     finally
-      LoadedTable.Free;
+      Loaded.Free;
     end;
   except
     Result := False;
   end;
 end;
 
-function TTOMLTableHelper.SaveToFile(const FileName: string; WriteBOM: Boolean; AWrapWidth: Integer): Boolean;
+function TTOMLTableHelper.SaveToFile(const FileName: string; WriteBOM: Boolean; AWrapWidth: Integer;
+  APreserveComments: Boolean): Boolean;
 begin
   try
-    Result := TOML.Serializer.SerializeTOMLToFile(Self, FileName, WriteBOM);
+    Result := TOML.Serializer.SerializeTOMLToFile(Self, FileName, WriteBOM, AWrapWidth, APreserveComments);
   except
     Result := False;
   end;
 end;
-{ ===== TTOMLTableHelper —— Serialization implementation ===== }
 
-function TTOMLTableHelper.toString(AWrapWidth: Integer): string;
+{ =========================================================================
+  TTOMLTableHelper — Serialization
+  ========================================================================= }
+
+function TTOMLTableHelper.toString(AWrapWidth: Integer; APreserveComments: Boolean): string;
 begin
   try
-    Result := TOML.Serializer.SerializeTOML(Self, AWrapWidth);
+    Result := TOML.Serializer.SerializeTOML(Self, AWrapWidth, APreserveComments);
   except
     Result := '';
   end;
 end;
-{ ===== TTOMLTableHelper —— Tool method implementation ===== }
+
+{ =========================================================================
+  TTOMLTableHelper — Tools
+  ========================================================================= }
 
 function TTOMLTableHelper.Remove(const Key: string; FreeValue: Boolean): Boolean;
 var
@@ -1282,16 +1050,18 @@ end;
 
 procedure TTOMLTableHelper.Clear(FreeValues: Boolean);
 var
-  Value: TTOMLValue;
+  i: Integer;
 begin
   try
     if FreeValues then
-      for Value in Self.Items.Values do
-        if Assigned(Value) then
-          Value.Free;
+      for i := 0 to Self.Items.Count - 1 do
+      begin
+        var V := Self.Items.GetValue(i);
+        if Assigned(V) then
+          V.Free;
+      end;
     Self.Items.Clear;
   except
-    // Silence on failure
   end;
 end;
 
@@ -1303,7 +1073,19 @@ begin
     Result := 0;
   end;
 end;
-{ ===== TTOMLTableHelper：Implement the interconversion method with JSON ===== }
+
+function TTOMLTableHelper.Clone: TTOMLTable;
+begin
+  try
+    Result := ParseTOML(Self.toString);
+  except
+    Result := nil;
+  end;
+end;
+
+{ =========================================================================
+  TTOMLTableHelper — JSON
+  ========================================================================= }
 
 function TTOMLTableHelper.ToJSON(APretty: Boolean; AIndentSize: Integer): string;
 begin
@@ -1317,22 +1099,21 @@ end;
 function TTOMLTableHelper.LoadFromJSON(const AJSON: string; ANullAsEmptyString: Boolean): Boolean;
 var
   Parsed: TTOMLTable;
-  Pair: TPair<string, TTOMLValue>;
+  i: Integer;
 begin
   Result := False;
   try
     Parsed := JSONToTOML(AJSON, ANullAsEmptyString);
     try
       Self.Clear(True);
-      for Pair in Parsed.Items do
-        Self.Add(Pair.Key, Pair.Value);
+      for i := 0 to Parsed.Items.Count - 1 do
+        Self.Add(Parsed.Items.GetKey(i), Parsed.Items.GetValue(i));
       Parsed.Items.Clear;
     finally
       Parsed.Free;
     end;
     Result := True;
   except
-    // Return False if an error occurs，Self has been cleared, so it remains an empty table.
   end;
 end;
 
@@ -1353,7 +1134,6 @@ begin
       SL.Free;
     end;
   except
-    // Return False if an error occurs
   end;
 end;
 
@@ -1373,10 +1153,12 @@ begin
     end;
     Result := LoadFromJSON(JSON, ANullAsEmptyString);
   except
-    // Return False if an error occurs
   end;
 end;
-{ ===== TTOMLArrayHelper —— Read method implementation ===== }
+
+{ =========================================================================
+  TTOMLArrayHelper — Read
+  ========================================================================= }
 
 function TTOMLArrayHelper.GetStr(Index: Integer; const DefaultValue: string): string;
 var
@@ -1467,7 +1249,7 @@ begin
         if Item is TTOMLFloat then
           Result := Item.AsFloat
         else if Item is TTOMLInteger then
-          Result := Item.AsInteger // Allow implicit integer conversion
+          Result := Item.AsInteger
         else
           Result := DefaultValue;
       end
@@ -1575,7 +1357,7 @@ begin
   end;
 end;
 
-function TTOMLArrayHelper.GetDateTime(Index: Integer; const DefaultValue: TDateTime = 0): TDateTime;
+function TTOMLArrayHelper.GetDateTime(Index: Integer; const DefaultValue: TDateTime): TDateTime;
 var
   Item: TTOMLValue;
 begin
@@ -1613,7 +1395,7 @@ begin
   end;
 end;
 
-function TTOMLArrayHelper.GetDateTimeValue(Index: Integer; const DefaultValue: string = ''): string;
+function TTOMLArrayHelper.GetDateTimeValue(Index: Integer; const DefaultValue: string): string;
 var
   Item: TTOMLValue;
 begin
@@ -1741,19 +1523,21 @@ begin
   end;
 end;
 
-{ ===== TTOMLArrayHelper —— Add method implementation ===== }
+{ =========================================================================
+  TTOMLArrayHelper — Add
+  ========================================================================= }
 
 function TTOMLArrayHelper.AddStr(const Value: string): TTOMLArray;
 var
-  NewValue: TTOMLString;
+  N: TTOMLString;
 begin
   Result := Self;
   try
-    NewValue := TTOMLString.Create(Value);
+    N := TTOMLString.Create(Value);
     try
-      Self.Add(NewValue);
+      Self.Add(N);
     except
-      NewValue.Free;
+      N.Free;
       Result := nil;
     end;
   except
@@ -1763,15 +1547,15 @@ end;
 
 function TTOMLArrayHelper.AddInt(const Value: Int64): TTOMLArray;
 var
-  NewValue: TTOMLInteger;
+  N: TTOMLInteger;
 begin
   Result := Self;
   try
-    NewValue := TTOMLInteger.Create(Value);
+    N := TTOMLInteger.Create(Value);
     try
-      Self.Add(NewValue);
+      Self.Add(N);
     except
-      NewValue.Free;
+      N.Free;
       Result := nil;
     end;
   except
@@ -1781,15 +1565,15 @@ end;
 
 function TTOMLArrayHelper.AddFloat(const Value: Double): TTOMLArray;
 var
-  NewValue: TTOMLFloat;
+  N: TTOMLFloat;
 begin
   Result := Self;
   try
-    NewValue := TTOMLFloat.Create(Value);
+    N := TTOMLFloat.Create(Value);
     try
-      Self.Add(NewValue);
+      Self.Add(N);
     except
-      NewValue.Free;
+      N.Free;
       Result := nil;
     end;
   except
@@ -1799,7 +1583,7 @@ end;
 
 function TTOMLArrayHelper.AddFloatValue(const RawValue: string): TTOMLArray;
 var
-  NewValue: TTOMLFloat;
+  N: TTOMLFloat;
   FS: TFormatSettings;
   F: Double;
 begin
@@ -1817,12 +1601,11 @@ begin
       Result := nil;
       Exit;
     end;
-
-    NewValue := TTOMLFloat.Create(F, RawValue);
+    N := TTOMLFloat.Create(F, RawValue);
     try
-      Self.Add(NewValue);
+      Self.Add(N);
     except
-      NewValue.Free;
+      N.Free;
       Result := nil;
     end;
   except
@@ -1832,15 +1615,15 @@ end;
 
 function TTOMLArrayHelper.AddBool(const Value: Boolean): TTOMLArray;
 var
-  NewValue: TTOMLBoolean;
+  N: TTOMLBoolean;
 begin
   Result := Self;
   try
-    NewValue := TTOMLBoolean.Create(Value);
+    N := TTOMLBoolean.Create(Value);
     try
-      Self.Add(NewValue);
+      Self.Add(N);
     except
-      NewValue.Free;
+      N.Free;
       Result := nil;
     end;
   except
@@ -1850,15 +1633,15 @@ end;
 
 function TTOMLArrayHelper.AddDateTime(const Value: TDateTime): TTOMLArray;
 var
-  NewValue: TTOMLDateTime;
+  N: TTOMLDateTime;
 begin
   Result := Self;
   try
-    NewValue := TTOMLDateTime.Create(Value);
+    N := TTOMLDateTime.Create(Value);
     try
-      Self.Add(NewValue);
+      Self.Add(N);
     except
-      NewValue.Free;
+      N.Free;
       Result := nil;
     end;
   except
@@ -1874,7 +1657,7 @@ var
 begin
   Result := Self;
   try
-    Temp := ParseTOMLString('__dt__ = ' + RawValue);
+    Temp := TOML.Parser.ParseTOMLString('__dt__ = ' + RawValue);
     try
       if not Temp.TryGetValue('__dt__', RawVal) or not (RawVal is TTOMLDateTime) then
       begin
@@ -1886,7 +1669,6 @@ begin
     finally
       Temp.Free;
     end;
-
     try
       Self.Add(NewValue);
     except
@@ -1922,6 +1704,10 @@ begin
   end;
 end;
 
+{ =========================================================================
+  TTOMLArrayHelper — Set
+  ========================================================================= }
+
 function TTOMLArrayHelper.SetStr(Index: Integer; const Value: string): Boolean;
 var
   OldItem: TTOMLValue;
@@ -1929,37 +1715,23 @@ var
 begin
   Result := False;
   try
-    // 1. 检查索引有效性
     if (Index < 0) or (Index >= Self.Count) then
       Exit;
-
-    // 2. 创建新值对象（可能失败，但此时还没修改数组）
     NewValue := TTOMLString.Create(Value);
-
-    // 3. 保存旧值引用
     OldItem := Self.Items[Index];
-
-    // 4. 尝试替换（通常不会失败）
     try
       Self.Items[Index] := NewValue;
-      // 5. 替换成功，释放旧值
       if Assigned(OldItem) then
         OldItem.Free;
       Result := True;
     except
-      // 6. 替换失败，恢复旧值，释放新值
       NewValue.Free;
-      Self.Items[Index] := OldItem;  // 恢复
-      // 不重新抛出异常，返回 False 即可
+      Self.Items[Index] := OldItem;
     end;
   except
-    // 外层异常处理：创建对象失败等
     Result := False;
   end;
 end;
-
-
-{ ===== SetXxx 方法实现 ===== }
 
 function TTOMLArrayHelper.SetInt(Index: Integer; const Value: Int64): Boolean;
 var
@@ -1970,10 +1742,8 @@ begin
   try
     if (Index < 0) or (Index >= Self.Count) then
       Exit;
-
     NewValue := TTOMLInteger.Create(Value);
     OldItem := Self.Items[Index];
-
     try
       Self.Items[Index] := NewValue;
       if Assigned(OldItem) then
@@ -1997,10 +1767,8 @@ begin
   try
     if (Index < 0) or (Index >= Self.Count) then
       Exit;
-
     NewValue := TTOMLFloat.Create(Value);
     OldItem := Self.Items[Index];
-
     try
       Self.Items[Index] := NewValue;
       if Assigned(OldItem) then
@@ -2026,18 +1794,14 @@ begin
   try
     if (Index < 0) or (Index >= Self.Count) then
       Exit;
-
-    // 解析并创建新值（这步最可能失败）
-    Temp := ParseTOMLString('__f__ = ' + RawValue);
+    Temp := TOML.Parser.ParseTOMLString('__f__ = ' + RawValue);
     try
       if not Temp.TryGetValue('__f__', RawVal) or not (RawVal is TTOMLFloat) then
-        Exit;  // 解析失败，直接返回，数组未修改
+        Exit;
       NewValue := TTOMLFloat.Create(TTOMLFloat(RawVal).Value, RawValue);
     finally
       Temp.Free;
     end;
-
-    // 新值创建成功，执行替换
     OldItem := Self.Items[Index];
     try
       Self.Items[Index] := NewValue;
@@ -2062,10 +1826,8 @@ begin
   try
     if (Index < 0) or (Index >= Self.Count) then
       Exit;
-
     NewValue := TTOMLBoolean.Create(Value);
     OldItem := Self.Items[Index];
-
     try
       Self.Items[Index] := NewValue;
       if Assigned(OldItem) then
@@ -2089,10 +1851,8 @@ begin
   try
     if (Index < 0) or (Index >= Self.Count) then
       Exit;
-
     NewValue := TTOMLDateTime.Create(Value);
     OldItem := Self.Items[Index];
-
     try
       Self.Items[Index] := NewValue;
       if Assigned(OldItem) then
@@ -2118,19 +1878,15 @@ begin
   try
     if (Index < 0) or (Index >= Self.Count) then
       Exit;
-
-    // 解析并创建新值
-    Temp := ParseTOMLString('__dt__ = ' + RawValue);
+    Temp := TOML.Parser.ParseTOMLString('__dt__ = ' + RawValue);
     try
       if not Temp.TryGetValue('__dt__', RawVal) or not (RawVal is TTOMLDateTime) then
-        Exit;  // 解析失败，直接返回
+        Exit;
       NewValue := TTOMLDateTime.Create(TTOMLDateTime(RawVal).Value, RawValue, TTOMLDateTime(RawVal).Kind,
         TTOMLDateTime(RawVal).TimeZoneOffset);
     finally
       Temp.Free;
     end;
-
-    // 执行替换
     OldItem := Self.Items[Index];
     try
       Self.Items[Index] := NewValue;
@@ -2153,11 +1909,9 @@ begin
   Result := False;
   if not Assigned(Value) then
     Exit;
-
   try
     if (Index < 0) or (Index >= Self.Count) then
       Exit;
-
     OldItem := Self.Items[Index];
     try
       Self.Items[Index] := Value;
@@ -2165,8 +1919,6 @@ begin
         OldItem.Free;
       Result := True;
     except
-      // 恢复旧值
-      // 注意：Value 的所有权没有转移，调用者仍需负责释放
       Self.Items[Index] := OldItem;
     end;
   except
@@ -2181,11 +1933,9 @@ begin
   Result := False;
   if not Assigned(Value) then
     Exit;
-
   try
     if (Index < 0) or (Index >= Self.Count) then
       Exit;
-
     OldItem := Self.Items[Index];
     try
       Self.Items[Index] := Value;
@@ -2193,8 +1943,6 @@ begin
         OldItem.Free;
       Result := True;
     except
-      // 恢复旧值
-      // 注意：Value 的所有权没有转移，调用者仍需负责释放
       Self.Items[Index] := OldItem;
     end;
   except
@@ -2202,26 +1950,24 @@ begin
   end;
 end;
 
-
-
-
-{ ===== TTOMLArrayHelper —— InsertXxx method implementation ===== }
+{ =========================================================================
+  TTOMLArrayHelper — Insert
+  ========================================================================= }
 
 function TTOMLArrayHelper.InsertStr(Index: Integer; const Value: string): Boolean;
 var
-  NewValue: TTOMLString;
+  N: TTOMLString;
 begin
   Result := False;
   try
     if (Index < 0) or (Index > Self.Count) then
       Exit;
-
-    NewValue := TTOMLString.Create(Value);
+    N := TTOMLString.Create(Value);
     try
-      Self.Items.Insert(Index, NewValue);
+      Self.Items.Insert(Index, N);
       Result := True;
     except
-      NewValue.Free;
+      N.Free;
     end;
   except
     Result := False;
@@ -2230,19 +1976,18 @@ end;
 
 function TTOMLArrayHelper.InsertInt(Index: Integer; const Value: Int64): Boolean;
 var
-  NewValue: TTOMLInteger;
+  N: TTOMLInteger;
 begin
   Result := False;
   try
     if (Index < 0) or (Index > Self.Count) then
       Exit;
-
-    NewValue := TTOMLInteger.Create(Value);
+    N := TTOMLInteger.Create(Value);
     try
-      Self.Items.Insert(Index, NewValue);
+      Self.Items.Insert(Index, N);
       Result := True;
     except
-      NewValue.Free;
+      N.Free;
     end;
   except
     Result := False;
@@ -2251,19 +1996,18 @@ end;
 
 function TTOMLArrayHelper.InsertFloat(Index: Integer; const Value: Double): Boolean;
 var
-  NewValue: TTOMLFloat;
+  N: TTOMLFloat;
 begin
   Result := False;
   try
     if (Index < 0) or (Index > Self.Count) then
       Exit;
-
-    NewValue := TTOMLFloat.Create(Value);
+    N := TTOMLFloat.Create(Value);
     try
-      Self.Items.Insert(Index, NewValue);
+      Self.Items.Insert(Index, N);
       Result := True;
     except
-      NewValue.Free;
+      N.Free;
     end;
   except
     Result := False;
@@ -2280,8 +2024,7 @@ begin
   try
     if (Index < 0) or (Index > Self.Count) then
       Exit;
-
-    Temp := ParseTOMLString('__f__ = ' + RawValue);
+    Temp := TOML.Parser.ParseTOMLString('__f__ = ' + RawValue);
     try
       if not Temp.TryGetValue('__f__', RawVal) or not (RawVal is TTOMLFloat) then
         Exit;
@@ -2289,7 +2032,6 @@ begin
     finally
       Temp.Free;
     end;
-
     try
       Self.Items.Insert(Index, NewValue);
       Result := True;
@@ -2303,19 +2045,18 @@ end;
 
 function TTOMLArrayHelper.InsertBool(Index: Integer; const Value: Boolean): Boolean;
 var
-  NewValue: TTOMLBoolean;
+  N: TTOMLBoolean;
 begin
   Result := False;
   try
     if (Index < 0) or (Index > Self.Count) then
       Exit;
-
-    NewValue := TTOMLBoolean.Create(Value);
+    N := TTOMLBoolean.Create(Value);
     try
-      Self.Items.Insert(Index, NewValue);
+      Self.Items.Insert(Index, N);
       Result := True;
     except
-      NewValue.Free;
+      N.Free;
     end;
   except
     Result := False;
@@ -2324,19 +2065,18 @@ end;
 
 function TTOMLArrayHelper.InsertDateTime(Index: Integer; const Value: TDateTime): Boolean;
 var
-  NewValue: TTOMLDateTime;
+  N: TTOMLDateTime;
 begin
   Result := False;
   try
     if (Index < 0) or (Index > Self.Count) then
       Exit;
-
-    NewValue := TTOMLDateTime.Create(Value);
+    N := TTOMLDateTime.Create(Value);
     try
-      Self.Items.Insert(Index, NewValue);
+      Self.Items.Insert(Index, N);
       Result := True;
     except
-      NewValue.Free;
+      N.Free;
     end;
   except
     Result := False;
@@ -2353,8 +2093,7 @@ begin
   try
     if (Index < 0) or (Index > Self.Count) then
       Exit;
-
-    Temp := ParseTOMLString('__dt__ = ' + RawValue);
+    Temp := TOML.Parser.ParseTOMLString('__dt__ = ' + RawValue);
     try
       if not Temp.TryGetValue('__dt__', RawVal) or not (RawVal is TTOMLDateTime) then
         Exit;
@@ -2363,7 +2102,6 @@ begin
     finally
       Temp.Free;
     end;
-
     try
       Self.Items.Insert(Index, NewValue);
       Result := True;
@@ -2383,12 +2121,10 @@ begin
   try
     if (Index < 0) or (Index > Self.Count) then
       Exit;
-
     try
       Self.Items.Insert(Index, Value);
       Result := True;
     except
-      // False
     end;
   except
     Result := False;
@@ -2403,19 +2139,19 @@ begin
   try
     if (Index < 0) or (Index > Self.Count) then
       Exit;
-
     try
       Self.Items.Insert(Index, Value);
       Result := True;
     except
-      // False
     end;
   except
     Result := False;
   end;
 end;
 
-{ ===== TTOMLArrayHelper —— Tool method implementation ===== }
+{ =========================================================================
+  TTOMLArrayHelper — Tools / Traversal / Serialization
+  ========================================================================= }
 
 procedure TTOMLArrayHelper.Clear(FreeItems: Boolean);
 var
@@ -2428,7 +2164,6 @@ begin
           Item.Free;
     Self.Items.Clear;
   except
-    // Silence on failure
   end;
 end;
 
@@ -2465,37 +2200,33 @@ begin
         Proc(TTOMLTable(Item));
     end;
   except
-    // Silence on failure
   end;
 end;
 
 procedure TTOMLArrayHelper.ForEachTable(Callback: TFunc<Integer, TTOMLTable, Boolean>; SkipNonTables: Boolean);
 var
-  I: Integer;
+  i: Integer;
   Item: TTOMLValue;
-  ContinueIteration: Boolean;
+  Cont: Boolean;
 begin
   if not Assigned(Callback) then
     Exit;
   try
-    for I := 0 to Self.Count - 1 do
+    for i := 0 to Self.Count - 1 do
     begin
-      Item := Self.Items[I];
+      Item := Self.Items[i];
       if Assigned(Item) and (Item is TTOMLTable) then
       begin
-        ContinueIteration := Callback(I, TTOMLTable(Item));
-        if not ContinueIteration then
+        Cont := Callback(i, TTOMLTable(Item));
+        if not Cont then
           Break;
       end
       else if not SkipNonTables then
         Break;
     end;
   except
-    // Silence on failure
   end;
 end;
-
-{ ===== TTOMLArrayHelper —— Serialization implementation ===== }
 
 function TTOMLArrayHelper.toString: string;
 begin
