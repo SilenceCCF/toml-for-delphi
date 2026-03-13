@@ -297,14 +297,14 @@ Config.Put('server', Server)
 #### LoadFromFile - 从文件加载
 
 ```pascal
-function LoadFromFile(const FileName: string; 
-                      ClearExisting: Boolean = True): Boolean;
+LoadFromFile(const FileName: string; ClearExisting: Boolean = True;
+             APreserveComments: Boolean = False): Boolean;
 ```
 
 **参数：**
 - `FileName` - 文件路径
-- `ClearExisting` - 是否清空现有内容（默认 True）
-
+- `ClearExisting`     - 是否清空现有内容（默认 True）
+- `APreserveComments` - 是否读取注释（默认 False）
 **返回值：**
 - `True` - 加载成功
 - `False` - 加载失败
@@ -325,14 +325,15 @@ end;
 #### SaveToFile - 保存到文件
 
 ```pascal
-function SaveToFile(const FileName: string; WriteBOM: Boolean = True;
-                    AWrapWidth: Integer): Boolean;
+SaveToFile(const FileName: string; WriteBOM: Boolean = True; AWrapWidth: Integer = 0;
+           APreserveComments: Boolean = False): Boolean;
 ```
 
 **参数：**
 - `FileName` - 文件路径
-- `WriteBOM` - 是否写入 UTF-8 BOM（默认 True）
+- `WriteBOM` - 是否写入 UTF-8 BOM（默认 True）。
 - `AWrapWidth` - 字符串超长时的换行位置，默认为 0 不换行。
+- `APreserveComments` - 是否写入注释（默认 False）。
 - **注意：如果字符串值中含有 \n，则自动拆成多行字符串。**
 **示例：**
 ```pascal
