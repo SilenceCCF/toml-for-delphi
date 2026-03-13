@@ -1,24 +1,19 @@
 (* TOML.Serializer.pas
-   TOML serializer — converts TOML data structures to text.
-   Conforms to the TOML v1.1.0 specification.
-
-   Comment serialization (optional):
-     When APreserveComments = True is passed to Serialize / SerializeTOML*:
-       - CommentBefore  is emitted before the key-value line / section header.
-       - CommentInline  is emitted at the end of the value line / header line.
-       - CommentTrailing is emitted before the closing ']' (arrays and inline tables)
-         or as the file footer (root table).
-
-   Key ordering:
-     Uses TTOMLOrderedTable iteration, so keys are emitted in insertion order
-     (i.e. the order they were read from the file, or the order the caller added them).
-     Sorting is NOT applied any more when comment-preservation is requested, in order
-     to keep comments correctly associated with their keys.  When
-     APreserveComments = False the old alphabetic-sort behaviour is preserved.
-
-   Wrap width:
-     Multi-line string wrapping (FWrapWidth > 0) works as before.
-     Inside arrays and inline tables FWrapWidth is temporarily set to 0 per the spec.
+   TOML data structure serialization unit.
+   This unit converts TOML objects into text format conforming to the TOML v1.1.0 specification, supporting:
+    - Key-value pairs (including keys with automatic quotation marks and escaping)
+    - Normal table [table] and array table [[array]]
+    - Inline tables { key = value, ... }
+    - Array [...]
+    - Base strings (with escapes)
+    - Integers and floating-point numbers (including inf/nan, preserving original precision)）
+    - Boolean
+    - Date and time (RFC 3339, raw text preferred)
+  Key features:
+    - Efficient string building using TStringBuilder
+    - Sort the table keys before traversing to ensure a definite output order.
+    - Key-value pairs are output before sublists and arrays (compliant with TOML specifications)
+    - The path of each segment is traced via FCurrentPath, used to generate the [abc] header.
 *)
 unit TOML.Serializer;
 
@@ -503,6 +498,32 @@ var
   end;
 
 begin
+  // IMPORTANT: In TOML multi-line basic strings, content lines must NOT be
+  // prefixed with the surrounding indent because that whitespace becomes part
+  // of the string value.  Only the closing """ line carries the indent.
+  //
+  // Word-wrap line continuations (\) are placed at column FWrapWidth and the
+  // next continuation line restarts at column 0 (no indent prefix).
+  //
+  // The closing """ is placed on its own line at the current indent level.
+  // Because the last content line ends with a plain newline (not \), the
+  // parser correctly sees the indent before """ as outside the string.
+  // If the original value does NOT end with a newline we append a bare
+  // newline after the last content so that """ still starts on a fresh line;
+  // the extra newline becomes part of the string value, so we must compensate
+  // by stripping a trailing newline when the value originally had none —
+  // instead, we use the TOML line-continuation trick ONLY on the very last
+  // content character when the value has no trailing newline AND it would
+  // otherwise glue the content to the closing """.
+  //
+  // Simplest correct approach:
+  //   • Always end the last content line with a real newline.
+  //   • If the original value had no trailing newline, append "\<newline>"
+  //     (line-continuation) so the parser discards that synthetic newline
+  //     together with the indent of the closing """ line.
+  //   • Content lines: no leading indent (col 0).
+  //   • Closing """: at Indent level.
+
   Indent := StringOfChar(' ', FIndentLevel * 2);
   FStringBuilder.AppendLine('"""');
   Lines := TStringList.Create;
@@ -511,6 +532,8 @@ begin
     for LineIdx := 0 to Lines.Count - 1 do
     begin
       Line := Lines[LineIdx];
+
+      // Tokenise the line into alternating space-runs and word-runs.
       SetLength(Tokens, 0);
       CharIdx := 1;
       while CharIdx <= Length(Line) do
@@ -526,6 +549,7 @@ begin
             Break;
           if C = '"' then
           begin
+            // Escape runs of 2+ quotes to avoid accidental """ inside the string.
             if (CharIdx < Length(Line)) and (Line[CharIdx + 1] = '"') then
               TokenStr := TokenStr + '\"'
             else
@@ -536,34 +560,36 @@ begin
           Inc(CharIdx);
         end;
         SetLength(Tokens, Length(Tokens) + 1);
-        Tokens[High(Tokens)].Text := TokenStr;
+        Tokens[High(Tokens)].Text    := TokenStr;
         Tokens[High(Tokens)].IsSpace := IsSpace;
       end;
 
-      FStringBuilder.Append(Indent);
-      Col := Length(Indent);
+      // Content starts at column 0 — no leading indent.
+      Col    := 0;
       TokIdx := 0;
       while TokIdx <= High(Tokens) do
       begin
         TokenStr := Tokens[TokIdx].Text;
-        IsSpace := Tokens[TokIdx].IsSpace;
+        IsSpace  := Tokens[TokIdx].IsSpace;
         if IsSpace then
         begin
+          // Look ahead: would the next word overflow the wrap column?
           if (FWrapWidth > 0) and (TokIdx + 1 <= High(Tokens)) then
           begin
             NextWordLen := 0;
-            LookIdx := TokIdx + 1;
+            LookIdx     := TokIdx + 1;
             while (LookIdx <= High(Tokens)) and Tokens[LookIdx].IsSpace do
               Inc(LookIdx);
             if LookIdx <= High(Tokens) then
               NextWordLen := Length(Tokens[LookIdx].Text);
             if Col + Length(TokenStr) + NextWordLen > FWrapWidth then
             begin
+              // Emit the spaces, break the line, restart at col 0.
               FStringBuilder.Append(TokenStr);
               FStringBuilder.AppendLine('\');
-              FStringBuilder.Append(Indent);
-              Col := Length(Indent);
+              Col    := 0;
               Inc(TokIdx);
+              // Skip any further leading spaces on the continuation line.
               while (TokIdx <= High(Tokens)) and Tokens[TokIdx].IsSpace do
                 Inc(TokIdx);
               Continue;
@@ -574,11 +600,11 @@ begin
         end
         else
         begin
-          if (FWrapWidth > 0) and (Col + Length(TokenStr) > FWrapWidth) and (Col > Length(Indent)) then
+          // Word: wrap before it if it would overflow and we are not at col 0.
+          if (FWrapWidth > 0) and (Col + Length(TokenStr) > FWrapWidth) and (Col > 0) then
           begin
             FStringBuilder.AppendLine('\');
-            FStringBuilder.Append(Indent);
-            Col := Length(Indent);
+            Col := 0;
           end;
           FStringBuilder.Append(TokenStr);
           Inc(Col, Length(TokenStr));
@@ -586,27 +612,26 @@ begin
         Inc(TokIdx);
       end;
 
-      if (LineIdx < Lines.Count - 1) then
+      // End of this source line.
+      if LineIdx < Lines.Count - 1 then
       begin
+        // Not the last source line: emit a real newline (it is part of the value).
         FStringBuilder.AppendLine('');
       end
       else
       begin
-        // If it is the last line,
-        // Check if the raw string AValue ends with a newline character (#10 or #13).
+        // Last source line.
+        // If the original value ends with a newline, emit one so the parser
+        // sees that newline as part of the value, then """ on the next line.
         if (AValue <> '') and ((AValue[Length(AValue)] = #10) or (AValue[Length(AValue)] = #13)) then
-        begin
-          // The original text contains line breaks, so we also output the line breaks.
-          FStringBuilder.AppendLine('');
-        end
+          FStringBuilder.AppendLine('')
         else
         begin
-          // The end of the original text does not have a newline.
-          // To start a new line for """ without breaking the data.
-          // Use the TOML line concatenation character '\'.
-          // It tells the parser to ignore following newlines and indentation.
-          FStringBuilder.Append('\');
-          FStringBuilder.AppendLine('');
+          // Original value has no trailing newline.
+          // Use the line-continuation escape: the parser will discard the
+          // synthetic newline AND the leading whitespace (indent) of the
+          // closing """ line, so the value is preserved exactly.
+          FStringBuilder.AppendLine('\');
         end;
       end;
     end;
