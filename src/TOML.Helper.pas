@@ -3,7 +3,6 @@
   Provides TTOMLTableHelper and TTOMLArrayHelper class helpers with a rich
   read/write/chain API.  Adapted for the ordered-table (TTOMLOrderedTable)
   and comment-property additions introduced in TOML.Types.
-
   Changes from the original:
     - TTOMLTableHelper methods use FItems.AddOrSetValue where direct dictionary
       access was previously used, so the ordered-table contract is respected.
@@ -87,8 +86,10 @@ type
     function Put(const Key: string; Value: TTOMLTable; Overwrite: Boolean = True): TTOMLTable; overload;
 
     { ----- File / string I/O ----- }
-    function LoadFromFile(const FileName: string; ClearExisting: Boolean = True): Boolean;
-    function LoadFromString(const ATOML: string; ClearExisting: Boolean = True): Boolean;
+    function LoadFromFile(const FileName: string; ClearExisting: Boolean = True; APreserveComments: Boolean =
+      False): Boolean;
+    function LoadFromString(const ATOML: string; ClearExisting: Boolean = True; APreserveComments: Boolean =
+      False): Boolean;
     function SaveToFile(const FileName: string; WriteBOM: Boolean = True; AWrapWidth: Integer = 0;
       APreserveComments: Boolean = False): Boolean;
 
@@ -107,10 +108,10 @@ type
     function SaveToJSONFile(const FileName: string; APretty: Boolean = True; ABOM: Boolean = False): Boolean;
     function LoadFromJSONFile(const FileName: string; ANullAsEmptyString: Boolean = False): Boolean;
   end;
-
   { =========================================================================
     TTOMLArrayHelper
     ========================================================================= }
+
   TTOMLArrayHelper = class helper for TTOMLArray
   public
     { ----- Read ----- }
@@ -178,8 +179,8 @@ type
     procedure ForEachTable(Proc: TProc<TTOMLTable>); overload;
     procedure ForEachTable(Callback: TFunc<Integer, TTOMLTable, Boolean>; SkipNonTables: Boolean = True); overload;
   end;
-
 { ---- Global factory / parse helpers ---- }
+
 function NewTable: TTOMLTable;
 
 function NewArray: TTOMLArray;
@@ -188,10 +189,9 @@ function LoadTOML(const FileName: string; APreserveComments: Boolean = False): T
 
 function ParseTOML(const ATOML: string; APreserveComments: Boolean = False): TTOMLTable;
 
-function TryParseTOML(const ATOML: string; out Config: TTOMLTable; APreserveComments: Boolean = False):
-  Boolean;
-
+function TryParseTOML(const ATOML: string; out Config: TTOMLTable; APreserveComments: Boolean = False): Boolean;
 { ---- Path helpers (internal, also publicly callable) ---- }
+
 function SplitPath(const Path: string): TArray<string>;
 
 function NavigateToTable(Root: TTOMLTable; const Path: string): TTOMLTable;
@@ -202,7 +202,6 @@ implementation
 
 uses
   StrUtils, Math;
-
 { =========================================================================
   Global helpers
   ========================================================================= }
@@ -245,7 +244,6 @@ begin
     Result := False;
   end;
 end;
-
 { =========================================================================
   Path helpers
   ========================================================================= }
@@ -390,9 +388,9 @@ begin
     Result := nil;
   end;
 end;
-
 { Write a value at the given path (creates intermediate tables as needed).
   Ownership of NewValue is transferred on success; caller retains it on failure. }
+
 function SetValueAtPath(Root: TTOMLTable; const Parts: TArray<string>; NewValue: TTOMLValue; Overwrite:
   Boolean): Boolean;
 var
@@ -441,7 +439,6 @@ begin
   CurrentTable.Items.AddOrSetValue(LastKey, NewValue);
   Result := True;
 end;
-
 { =========================================================================
   TTOMLTableHelper — Read
   ========================================================================= }
@@ -748,7 +745,6 @@ begin
   except
   end;
 end;
-
 { =========================================================================
   TTOMLTableHelper — Write
   ========================================================================= }
@@ -897,7 +893,6 @@ begin
     Result := False;
   end;
 end;
-
 { =========================================================================
   TTOMLTableHelper — Builder
   ========================================================================= }
@@ -949,19 +944,18 @@ begin
   SetTable(Key, Value, Overwrite);
   Result := Self;
 end;
-
 { =========================================================================
   TTOMLTableHelper — File / string I/O
   ========================================================================= }
 
-function TTOMLTableHelper.LoadFromFile(const FileName: string; ClearExisting: Boolean): Boolean;
+function TTOMLTableHelper.LoadFromFile(const FileName: string; ClearExisting, APreserveComments: Boolean): Boolean;
 var
   Loaded: TTOMLTable;
   i: Integer;
 begin
   Result := False;
   try
-    Loaded := TOML.Parser.ParseTOMLFile(FileName);
+    Loaded := TOML.Parser.ParseTOMLFile(FileName, APreserveComments);
     if not Assigned(Loaded) then
       Exit;
     try
@@ -979,14 +973,14 @@ begin
   end;
 end;
 
-function TTOMLTableHelper.LoadFromString(const ATOML: string; ClearExisting: Boolean): Boolean;
+function TTOMLTableHelper.LoadFromString(const ATOML: string; ClearExisting, APreserveComments: Boolean): Boolean;
 var
   Loaded: TTOMLTable;
   i: Integer;
 begin
   Result := False;
   try
-    Loaded := TOML.Parser.ParseTOMLString(ATOML);
+    Loaded := TOML.Parser.ParseTOMLString(ATOML, APreserveComments);
     if not Assigned(Loaded) then
       Exit;
     try
@@ -1013,7 +1007,6 @@ begin
     Result := False;
   end;
 end;
-
 { =========================================================================
   TTOMLTableHelper — Serialization
   ========================================================================= }
@@ -1026,7 +1019,6 @@ begin
     Result := '';
   end;
 end;
-
 { =========================================================================
   TTOMLTableHelper — Tools
   ========================================================================= }
@@ -1082,7 +1074,6 @@ begin
     Result := nil;
   end;
 end;
-
 { =========================================================================
   TTOMLTableHelper — JSON
   ========================================================================= }
@@ -1155,7 +1146,6 @@ begin
   except
   end;
 end;
-
 { =========================================================================
   TTOMLArrayHelper — Read
   ========================================================================= }
@@ -1522,7 +1512,6 @@ begin
     Result := False;
   end;
 end;
-
 { =========================================================================
   TTOMLArrayHelper — Add
   ========================================================================= }
@@ -1703,7 +1692,6 @@ begin
     Result := nil;
   end;
 end;
-
 { =========================================================================
   TTOMLArrayHelper — Set
   ========================================================================= }
@@ -1949,7 +1937,6 @@ begin
     Result := False;
   end;
 end;
-
 { =========================================================================
   TTOMLArrayHelper — Insert
   ========================================================================= }
@@ -2148,7 +2135,6 @@ begin
     Result := False;
   end;
 end;
-
 { =========================================================================
   TTOMLArrayHelper — Tools / Traversal / Serialization
   ========================================================================= }
