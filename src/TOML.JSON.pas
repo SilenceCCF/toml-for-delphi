@@ -819,31 +819,28 @@ begin
 end;
 
 procedure TTOMLToJSONSerializer.WriteObject(const T: TTOMLTable);
-{ Preserve the insertion order of TTOMLTable.
-  Items without performing any additional sorting.
-  TTOMLTable.Items is based on TDictionary and is inherently unordered.
-  If a stable order is required, it is recommended that the upper-level
-  business define the keys sequentially in the TOML file.}
+{ Preserves the insertion order of TTOMLTable.Items (now backed by
+  TTOMLOrderedTable, which maintains insertion order by design). }
 var
-  Pair: TPair<string, TTOMLValue>;
+  i    : Integer;
   First: Boolean;
 begin
   FSB.Append('{');
   First := True;
   Inc(FIndentLevel);
 
-  for Pair in T.Items do
+  for i := 0 to T.Items.Count - 1 do
   begin
     if not First then
       FSB.Append(',');
     First := False;
     NewLine;
     Indent;
-    WriteJSONString(Pair.Key);
+    WriteJSONString(T.Items.GetKey(i));
     FSB.Append(':');
     if FPretty then
       FSB.Append(' ');
-    WriteValue(Pair.Value);
+    WriteValue(T.Items.GetValue(i));
   end;
 
   Dec(FIndentLevel);
