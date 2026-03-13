@@ -1,102 +1,136 @@
 { TOML.Types.pas
-  This unit defines the core data types and classes used to represent TOML data structures.
+  Core data type definitions for the TOML library.
   It provides a type-safe, object-oriented representation of TOML values including:
   - Basic types (string, integer, float, boolean, datetime)
-  - Complex types (array, table)
+  - Complex types (array, table, array of table)
+  - Supports reading and writing comments
   - Type conversion and validation
   - Memory management for TOML data structures
 
   The type system follows the TOML v1.1.0 specification and ensures type safety through
   runtime checks and explicit type conversions.
+  Key ordering:
+    TTOMLTable uses TTOMLOrderedTable (a list-backed ordered dictionary) so that
+    key insertion order is preserved.  This is required to faithfully round-trip
+    comments that are tied to specific keys.
 }
 unit TOML.Types;
 
 interface
 
 uses
-  SysUtils, Generics.Collections, strutils;
+  SysUtils, Generics.Collections, StrUtils;
 
 type
-  { TOML value types - represents all possible TOML data types
-    These types correspond directly to the TOML specification types }
-  TTOMLValueType = (tvtString,      // String value type (basic and literal strings)
-    tvtInteger,     // Integer value type (decimal, hex, octal, binary)
-    tvtFloat,       // Float/decimal value type (including exponential notation)
-    tvtBoolean,     // Boolean value type (true/false)
-    tvtDateTime,    // Date/time value type (RFC 3339)
-    tvtArray,       // Array value type (ordered list of values)
-    tvtTable,       // Table value type (collection of key/value pairs)
-    tvtInlineTable  // Inline table value type (compact table representation)
+  { TOML value types }
+  TTOMLValueType = (
+    tvtString,      // String value (basic and literal)
+    tvtInteger,     // Integer value (decimal, hex, octal, binary)
+    tvtFloat,       // Float value (including exponential, inf, nan)
+    tvtBoolean,     // Boolean value (true/false)
+    tvtDateTime,    // Date/time value (RFC 3339)
+    tvtArray,       // Array value
+    tvtTable,       // Table value
+    tvtInlineTable  // Inline table value
   );
-  { TOML Date and Time Subtypes — Corresponding to the four date and
-    time formats in the TOML 1.1.0 specification. }
 
-  TTOMLDateTimeKind = (tdkOffsetDateTime,  // Date and time with time zone offset：1979-05-27T07:32:00Z or 1979-05-27T00:32:00-07:00
-    tdkLocalDateTime,   // Local date and time：1979-05-27T07:32:00
-    tdkLocalDate,       // Local date：1979-05-27
-    tdkLocalTime        // Local time：07:32:00
+  { TOML date/time subtypes }
+  TTOMLDateTimeKind = (
+    tdkOffsetDateTime,  // Date+time with timezone: 1979-05-27T07:32:00Z
+    tdkLocalDateTime,   // Local date+time:          1979-05-27T07:32:00
+    tdkLocalDate,       // Local date:               1979-05-27
+    tdkLocalTime        // Local time:               07:32:00
   );
-  { Forward declarations for interdependent types }
 
-  TTOMLValue = class;
+  { Forward declarations }
+  TTOMLValue  = class;
+  TTOMLArray  = class;
+  TTOMLTable  = class;
 
-  TTOMLArray = class;
-
-  TTOMLTable = class;
-  { Exception types for TOML parsing and handling }
-
-  { Base exception type for all TOML-related errors }
-
-  ETOMLException = class(Exception);
-  { Exception type for TOML parsing errors }
-
-  ETOMLParserException = class(ETOMLException);
-  { Exception type for TOML serialization errors }
-
+  { Exception types }
+  ETOMLException           = class(Exception);
+  ETOMLParserException     = class(ETOMLException);
   ETOMLSerializerException = class(ETOMLException);
-  { Generic dictionary type for TOML tables
-    Maps string keys to TOML values with case-sensitive comparison }
 
-  TTOMLTableDict = TDictionary<string, TTOMLValue>;
-  { Generic list type for TOML arrays
-    Stores ordered list of TOML values }
+  { Ordered key-value entry used inside TTOMLTable }
+  TTOMLTableEntry = record
+    Key   : string;
+    Value : TTOMLValue;
+  end;
 
-  TTOMLValueList = TList<TTOMLValue>;
-  { Base TOML value class - abstract base class for all TOML value types
-    Provides common functionality and type conversion methods }
+  { Ordered table storage: maintains insertion order while providing O(1) lookup.
+    Uses a TDictionary for fast keyed access and a TList for order. }
+  TTOMLOrderedTable = class
+  private
+    FDict : TDictionary<string, Integer>; // key -> index in FEntries
+    FList : TList<TTOMLTableEntry>;
+  public
+    constructor Create;
+    destructor  Destroy; override;
 
+    { Add a new entry. Raises ETOMLParserException if the key already exists. }
+    procedure Add(const AKey: string; AValue: TTOMLValue);
+
+    { Add or overwrite an entry (used by the Helper unit). }
+    procedure AddOrSetValue(const AKey: string; AValue: TTOMLValue);
+
+    function  TryGetValue(const AKey: string; out AValue: TTOMLValue): Boolean;
+    function  ContainsKey(const AKey: string): Boolean;
+
+    { Remove an entry. Does NOT free the associated value. }
+    procedure Remove(const AKey: string);
+
+    { Clear all entries. Does NOT free values. }
+    procedure Clear;
+
+    function  Count: Integer;
+
+    { Ordered access }
+    function  GetKey(Index: Integer): string;
+    function  GetValue(Index: Integer): TTOMLValue;
+    procedure SetValue(Index: Integer; AValue: TTOMLValue);
+
+    { Iterate }
+    function  Keys: TArray<string>;
+    function  Values: TArray<TTOMLValue>;
+    function  Entries: TArray<TTOMLTableEntry>;
+  end;
+
+  { -------------------------------------------------------------------------
+    Base TOML value class
+    ------------------------------------------------------------------------- }
   TTOMLValue = class
   private
-    FValueType: TTOMLValueType;
+    FValueType      : TTOMLValueType;
+    FCommentBefore  : string; // Raw comment lines before this node
+    FCommentInline  : string; // Inline comment on the same line as this node
   protected
-    { Protected type conversion methods - override in derived classes
-      Each method raises ETOMLException if conversion is not supported }
-    function GetAsString: string; virtual;
-    function GetAsInteger: Int64; virtual;
-    function GetAsFloat: Double; virtual;
-    function GetAsBoolean: Boolean; virtual;
-    function GetAsDateTime: TDateTime; virtual;
-    function GetAsArray: TTOMLArray; virtual;
-    function GetAsTable: TTOMLTable; virtual;
+    function GetAsString   : string;   virtual;
+    function GetAsInteger  : Int64;    virtual;
+    function GetAsFloat    : Double;   virtual;
+    function GetAsBoolean  : Boolean;  virtual;
+    function GetAsDateTime : TDateTime; virtual;
+    function GetAsArray    : TTOMLArray; virtual;
+    function GetAsTable    : TTOMLTable; virtual;
   public
-    { Creates a new TOML value with the specified type
-      @param AType The type of TOML value to create }
     constructor Create(AType: TTOMLValueType);
-    destructor Destroy; override;
-    { Type of value }
-    property ValueType: TTOMLValueType read FValueType;
-    { Properties for accessing the value in different formats
-      Each property will raise ETOMLException if conversion is not supported }
-    property AsString: string read GetAsString;
-    property AsInteger: Int64 read GetAsInteger;
-    property AsFloat: Double read GetAsFloat;
-    property AsBoolean: Boolean read GetAsBoolean;
-    property AsDateTime: TDateTime read GetAsDateTime;
-    property AsArray: TTOMLArray read GetAsArray;
-    property AsTable: TTOMLTable read GetAsTable;
-  end;
-  { String value - represents a TOML string (basic or literal) }
+    destructor  Destroy; override;
 
+    property ValueType     : TTOMLValueType read FValueType;
+    property AsString      : string      read GetAsString;
+    property AsInteger     : Int64       read GetAsInteger;
+    property AsFloat       : Double      read GetAsFloat;
+    property AsBoolean     : Boolean     read GetAsBoolean;
+    property AsDateTime    : TDateTime   read GetAsDateTime;
+    property AsArray       : TTOMLArray  read GetAsArray;
+    property AsTable       : TTOMLTable  read GetAsTable;
+
+    { Comment properties (only populated when comment-aware parsing is enabled) }
+    property CommentBefore : string read FCommentBefore write FCommentBefore;
+    property CommentInline : string read FCommentInline write FCommentInline;
+  end;
+
+  { String value }
   TTOMLString = class(TTOMLValue)
   private
     FValue: string;
@@ -106,35 +140,33 @@ type
     constructor Create(const AValue: string);
     property Value: string read FValue write FValue;
   end;
-  { Integer value - represents a TOML integer (decimal, hex, octal, binary) }
 
+  { Integer value }
   TTOMLInteger = class(TTOMLValue)
   private
     FValue: Int64;
   protected
-    function GetAsInteger: Int64; override;
-    function GetAsFloat: Double; override;  // Allows conversion to float
+    function GetAsInteger: Int64;  override;
+    function GetAsFloat  : Double; override;
   public
     constructor Create(const AValue: Int64);
     property Value: Int64 read FValue write FValue;
   end;
-  { TOML Floating-point values ​​(including exponentiation, inf, nan) }
 
+  { Float value }
   TTOMLFloat = class(TTOMLValue)
   private
-    FValue: Double;
-    FRawString: string; // Save the original text representation for precise round-trip accuracy.
+    FValue     : Double;
+    FRawString : string;
   protected
     function GetAsFloat: Double; override;
   public
-    { @param AValue      Double-precision floating-point value
-      @param ARawString  Original text (optional, used to maintain serialization precision) }
     constructor Create(const AValue: Double; const ARawString: string = '');
-    property Value: Double read FValue write FValue;
-    property RawString: string read FRawString write FRawString;
+    property Value     : Double read FValue     write FValue;
+    property RawString : string read FRawString write FRawString;
   end;
-  { Boolean value - represents a TOML boolean (true/false) }
 
+  { Boolean value }
   TTOMLBoolean = class(TTOMLValue)
   private
     FValue: Boolean;
@@ -144,102 +176,230 @@ type
     constructor Create(const AValue: Boolean);
     property Value: Boolean read FValue write FValue;
   end;
-  { TOML date and time values ​​(RFC 3339 format).
-    Supports four subtypes: date and time with time zone offset,
-    local date and time, local date, and local time. }
 
+  { DateTime value }
   TTOMLDateTime = class(TTOMLValue)
   private
-    FValue: TDateTime;
-    FRawString: string;        // Preserve the original text to ensure accurate format restoration during serialization.
-    FKind: TTOMLDateTimeKind;  // Datetime subtype
-    FTimeZoneOffset: Integer;  // Time zone offset (minutes) only applies to tdkOffsetDateTime
+    FValue          : TDateTime;
+    FRawString      : string;
+    FKind           : TTOMLDateTimeKind;
+    FTimeZoneOffset : Integer; // minutes; only for tdkOffsetDateTime
   protected
-    function GetAsDateTime: TDateTime; override;
-    function GetAsString: string; override;
+    function GetAsDateTime : TDateTime; override;
+    function GetAsString   : string;    override;
   public
-    { @param ADateTime        TDateTime value
-      @param ARawString       Original text (optional, for precise formatting restoration)
-      @param AKind            Date and time subtype (default: with time zone offset)
-      @param ATimeZoneOffset  Time zone offset (minutes, default 0 = UTC) }
-    constructor Create(const ADateTime: TDateTime; const ARawString: string = ''; AKind: TTOMLDateTimeKind =
-      tdkOffsetDateTime; ATimeZoneOffset: Integer = 0);
-    property Value: TDateTime read FValue write FValue;
-    property RawString: string read FRawString write FRawString;
-    property Kind: TTOMLDateTimeKind read FKind write FKind;
-    property TimeZoneOffset: Integer read FTimeZoneOffset write FTimeZoneOffset;
+    constructor Create(const ADateTime: TDateTime;
+                       const ARawString: string = '';
+                       AKind: TTOMLDateTimeKind = tdkOffsetDateTime;
+                       ATimeZoneOffset: Integer = 0);
+    property Value          : TDateTime        read FValue          write FValue;
+    property RawString      : string           read FRawString      write FRawString;
+    property Kind           : TTOMLDateTimeKind read FKind          write FKind;
+    property TimeZoneOffset : Integer          read FTimeZoneOffset write FTimeZoneOffset;
   end;
-  { Array value - represents a TOML array (ordered list of values) }
+
+  { -------------------------------------------------------------------------
+    Array value
+    ------------------------------------------------------------------------- }
+  TTOMLValueList = TList<TTOMLValue>;
 
   TTOMLArray = class(TTOMLValue)
   private
-    FItems: TTOMLValueList;
+    FItems          : TTOMLValueList;
+    FCommentTrailing: string; // Comment between last element and ']'
   protected
     function GetAsArray: TTOMLArray; override;
   public
-    { Creates a new empty TOML array }
     constructor Create;
-    destructor Destroy; override;
-    { Adds a value to the array
-      @param AValue The value to add
-      @note Takes ownership of the value }
-    procedure Add(AValue: TTOMLValue);
-    { Gets an item at the specified index
-      @param Index The zero-based index
-      @returns The TOML value at the index
-      @raises EListError if index is out of bounds }
-    function GetItem(Index: Integer): TTOMLValue;
-    { Gets the number of items in the array
-      @returns The count of items }
-    function GetCount: Integer;
-    { Properties for accessing array data }
-    property Items: TTOMLValueList read FItems;
-    property Count: Integer read GetCount;
-  end;
-  { Table value - represents a TOML table (collection of key/value pairs) }
+    destructor  Destroy; override;
 
+    procedure Add(AValue: TTOMLValue);
+    function  GetItem(Index: Integer): TTOMLValue;
+    function  GetCount: Integer;
+
+    property Items           : TTOMLValueList read FItems;
+    property Count           : Integer        read GetCount;
+    property CommentTrailing : string         read FCommentTrailing write FCommentTrailing;
+  end;
+
+  { -------------------------------------------------------------------------
+    Table value
+    ------------------------------------------------------------------------- }
   TTOMLTable = class(TTOMLValue)
   private
-    FItems: TTOMLTableDict;
-    { True: This indicates that the table was implicitly created
-      by a dot key path (such as 'a' in ab = 1).}
-    FIsImplicit: Boolean;
-    (* True: This indicates that the table is defined using inline syntax
-     (e.g., a = { b = 1 }) and cannot be expanded via a table header.*)
-    FIsInline: Boolean;
+    FItems          : TTOMLOrderedTable;
+    FIsImplicit     : Boolean;
+    FIsInline       : Boolean;
+    FCommentTrailing: string; // Comment after the last key / file-footer for root
   protected
     function GetAsTable: TTOMLTable; override;
   public
-    { Creates a new empty TOML table }
     constructor Create;
-    destructor Destroy; override;
-    { Adds a key-value pair to the table
-      @param AKey The key for the value
-      @param AValue The value to add
-      @raises ETOMLParserException if the key already exists
-      @note Takes ownership of the value }
+    destructor  Destroy; override;
+
+    { Add a key-value pair (raises ETOMLParserException on duplicate key). }
     procedure Add(const AKey: string; AValue: TTOMLValue);
-    { Tries to get a value by key
-      @param AKey The key to look up
-      @param AValue The found value (if successful)
-      @returns True if the key exists, False otherwise }
+
     function TryGetValue(const AKey: string; out AValue: TTOMLValue): Boolean;
-    property Items: TTOMLTableDict read FItems;
-    { Whether it's an implicitly created table
-      (automatically generated via dot key paths) }
-    property IsImplicit: Boolean read FIsImplicit write FIsImplicit;
-    (* Whether it is an inline table (defined by { } syntax,
-     the content cannot be appended.) *)
-    property IsInline: Boolean read FIsInline write FIsInline;
+
+    property Items           : TTOMLOrderedTable read FItems;
+    property IsImplicit      : Boolean           read FIsImplicit      write FIsImplicit;
+    property IsInline        : Boolean           read FIsInline        write FIsInline;
+    property CommentTrailing : string            read FCommentTrailing write FCommentTrailing;
   end;
 
 implementation
-{ TTOMLValue }
+
+{ =========================================================================
+  TTOMLOrderedTable
+  ========================================================================= }
+
+constructor TTOMLOrderedTable.Create;
+begin
+  inherited Create;
+  FDict := TDictionary<string, Integer>.Create;
+  FList := TList<TTOMLTableEntry>.Create;
+end;
+
+destructor TTOMLOrderedTable.Destroy;
+begin
+  FDict.Free;
+  FList.Free;
+  inherited;
+end;
+
+procedure TTOMLOrderedTable.Add(const AKey: string; AValue: TTOMLValue);
+var
+  Entry: TTOMLTableEntry;
+begin
+  if FDict.ContainsKey(AKey) then
+    raise ETOMLParserException.CreateFmt('Duplicate key "%s" found', [AKey]);
+  Entry.Key   := AKey;
+  Entry.Value := AValue;
+  FDict.Add(AKey, FList.Count);
+  FList.Add(Entry);
+end;
+
+procedure TTOMLOrderedTable.AddOrSetValue(const AKey: string; AValue: TTOMLValue);
+var
+  Idx  : Integer;
+  Entry: TTOMLTableEntry;
+begin
+  if FDict.TryGetValue(AKey, Idx) then
+  begin
+    Entry       := FList[Idx];
+    Entry.Value := AValue;
+    FList[Idx]  := Entry;
+  end
+  else
+  begin
+    Entry.Key   := AKey;
+    Entry.Value := AValue;
+    FDict.Add(AKey, FList.Count);
+    FList.Add(Entry);
+  end;
+end;
+
+function TTOMLOrderedTable.TryGetValue(const AKey: string; out AValue: TTOMLValue): Boolean;
+var
+  Idx: Integer;
+begin
+  Result := FDict.TryGetValue(AKey, Idx);
+  if Result then
+    AValue := FList[Idx].Value
+  else
+    AValue := nil;
+end;
+
+function TTOMLOrderedTable.ContainsKey(const AKey: string): Boolean;
+begin
+  Result := FDict.ContainsKey(AKey);
+end;
+
+procedure TTOMLOrderedTable.Remove(const AKey: string);
+var
+  Idx, i: Integer;
+  Entry  : TTOMLTableEntry;
+begin
+  if not FDict.TryGetValue(AKey, Idx) then
+    Exit;
+  FList.Delete(Idx);
+  FDict.Remove(AKey);
+  // Rebuild index for entries after the removed one
+  for i := Idx to FList.Count - 1 do
+  begin
+    Entry := FList[i];
+    FDict.AddOrSetValue(Entry.Key, i);
+  end;
+end;
+
+procedure TTOMLOrderedTable.Clear;
+begin
+  FDict.Clear;
+  FList.Clear;
+end;
+
+function TTOMLOrderedTable.Count: Integer;
+begin
+  Result := FList.Count;
+end;
+
+function TTOMLOrderedTable.GetKey(Index: Integer): string;
+begin
+  Result := FList[Index].Key;
+end;
+
+function TTOMLOrderedTable.GetValue(Index: Integer): TTOMLValue;
+begin
+  Result := FList[Index].Value;
+end;
+
+procedure TTOMLOrderedTable.SetValue(Index: Integer; AValue: TTOMLValue);
+var
+  Entry: TTOMLTableEntry;
+begin
+  Entry       := FList[Index];
+  Entry.Value := AValue;
+  FList[Index] := Entry;
+end;
+
+function TTOMLOrderedTable.Keys: TArray<string>;
+var
+  i: Integer;
+begin
+  SetLength(Result, FList.Count);
+  for i := 0 to FList.Count - 1 do
+    Result[i] := FList[i].Key;
+end;
+
+function TTOMLOrderedTable.Values: TArray<TTOMLValue>;
+var
+  i: Integer;
+begin
+  SetLength(Result, FList.Count);
+  for i := 0 to FList.Count - 1 do
+    Result[i] := FList[i].Value;
+end;
+
+function TTOMLOrderedTable.Entries: TArray<TTOMLTableEntry>;
+var
+  i: Integer;
+begin
+  SetLength(Result, FList.Count);
+  for i := 0 to FList.Count - 1 do
+    Result[i] := FList[i];
+end;
+
+{ =========================================================================
+  TTOMLValue
+  ========================================================================= }
 
 constructor TTOMLValue.Create(AType: TTOMLValueType);
 begin
   inherited Create;
-  FValueType := AType;
+  FValueType     := AType;
+  FCommentBefore := '';
+  FCommentInline := '';
 end;
 
 destructor TTOMLValue.Destroy;
@@ -288,7 +448,10 @@ begin
   Result := nil;
   raise ETOMLException.Create('Cannot convert this TOML value to table');
 end;
-{ TTOMLString }
+
+{ =========================================================================
+  TTOMLString
+  ========================================================================= }
 
 constructor TTOMLString.Create(const AValue: string);
 begin
@@ -300,7 +463,10 @@ function TTOMLString.GetAsString: string;
 begin
   Result := FValue;
 end;
-{ TTOMLInteger }
+
+{ =========================================================================
+  TTOMLInteger
+  ========================================================================= }
 
 constructor TTOMLInteger.Create(const AValue: Int64);
 begin
@@ -317,12 +483,15 @@ function TTOMLInteger.GetAsFloat: Double;
 begin
   Result := FValue;
 end;
-{ TTOMLFloat }
+
+{ =========================================================================
+  TTOMLFloat
+  ========================================================================= }
 
 constructor TTOMLFloat.Create(const AValue: Double; const ARawString: string);
 begin
   inherited Create(tvtFloat);
-  FValue := AValue;
+  FValue     := AValue;
   FRawString := ARawString;
 end;
 
@@ -330,7 +499,10 @@ function TTOMLFloat.GetAsFloat: Double;
 begin
   Result := FValue;
 end;
-{ TTOMLBoolean }
+
+{ =========================================================================
+  TTOMLBoolean
+  ========================================================================= }
 
 constructor TTOMLBoolean.Create(const AValue: Boolean);
 begin
@@ -342,15 +514,20 @@ function TTOMLBoolean.GetAsBoolean: Boolean;
 begin
   Result := FValue;
 end;
-{ TTOMLDateTime }
 
-constructor TTOMLDateTime.Create(const ADateTime: TDateTime; const ARawString: string; AKind:
-  TTOMLDateTimeKind; ATimeZoneOffset: Integer);
+{ =========================================================================
+  TTOMLDateTime
+  ========================================================================= }
+
+constructor TTOMLDateTime.Create(const ADateTime: TDateTime;
+                                  const ARawString: string;
+                                  AKind: TTOMLDateTimeKind;
+                                  ATimeZoneOffset: Integer);
 begin
   inherited Create(tvtDateTime);
-  FValue := ADateTime;
-  FRawString := ARawString;
-  FKind := AKind;
+  FValue          := ADateTime;
+  FRawString      := ARawString;
+  FKind           := AKind;
   FTimeZoneOffset := ATimeZoneOffset;
 end;
 
@@ -359,13 +536,11 @@ var
   Hours, Minutes: Integer;
   Sign: Char;
 begin
-  // Use the original text first to ensure accurate serialization.
   if FRawString <> '' then
   begin
     Result := FRawString;
     Exit;
   end;
-  // Format the output by datetime subtype
   case FKind of
     tdkLocalDate:
       Result := FormatDateTime('yyyy-mm-dd', FValue);
@@ -379,10 +554,11 @@ begin
           Result := FormatDateTime('yyyy-mm-dd"T"hh:nn:ss"Z"', FValue)
         else
         begin
-          Hours := Abs(FTimeZoneOffset) div 60;
+          Hours  := Abs(FTimeZoneOffset) div 60;
           Minutes := Abs(FTimeZoneOffset) mod 60;
-          Sign := IfThen(FTimeZoneOffset < 0, '-', '+')[1];
-          Result := FormatDateTime('yyyy-mm-dd"T"hh:nn:ss', FValue) + Format('%s%.2d:%.2d', [Sign, Hours, Minutes]);
+          Sign   := IfThen(FTimeZoneOffset < 0, '-', '+')[1];
+          Result := FormatDateTime('yyyy-mm-dd"T"hh:nn:ss', FValue) +
+                    Format('%s%.2d:%.2d', [Sign, Hours, Minutes]);
         end;
       end;
   end;
@@ -392,12 +568,16 @@ function TTOMLDateTime.GetAsDateTime: TDateTime;
 begin
   Result := FValue;
 end;
-{ TTOMLArray }
+
+{ =========================================================================
+  TTOMLArray
+  ========================================================================= }
 
 constructor TTOMLArray.Create;
 begin
   inherited Create(tvtArray);
-  FItems := TTOMLValueList.Create;
+  FItems           := TTOMLValueList.Create;
+  FCommentTrailing := '';
 end;
 
 destructor TTOMLArray.Destroy;
@@ -429,35 +609,33 @@ function TTOMLArray.GetAsArray: TTOMLArray;
 begin
   Result := Self;
 end;
-{ TTOMLTable }
+
+{ =========================================================================
+  TTOMLTable
+  ========================================================================= }
 
 constructor TTOMLTable.Create;
 begin
   inherited Create(tvtTable);
-  FItems := TTOMLTableDict.Create;
-  FIsImplicit := False;
-  FIsInline := False;
+  FItems           := TTOMLOrderedTable.Create;
+  FIsImplicit      := False;
+  FIsInline        := False;
+  FCommentTrailing := '';
 end;
 
 destructor TTOMLTable.Destroy;
 var
-  Item: TTOMLValue;
+  i: Integer;
 begin
-  for Item in FItems.Values do
-    Item.Free;
+  for i := 0 to FItems.Count - 1 do
+    FItems.GetValue(i).Free;
   FItems.Free;
   inherited Destroy;
 end;
 
 procedure TTOMLTable.Add(const AKey: string; AValue: TTOMLValue);
-var
-  ExistingValue: TTOMLValue;
 begin
-  if FItems = nil then
-    FItems := TTOMLTableDict.Create;
-  if FItems.TryGetValue(AKey, ExistingValue) then
-    raise ETOMLParserException.CreateFmt('Duplicate key "%s" found', [AKey]);
-  FItems.AddOrSetValue(AKey, AValue);
+  FItems.Add(AKey, AValue);
 end;
 
 function TTOMLTable.TryGetValue(const AKey: string; out AValue: TTOMLValue): Boolean;
