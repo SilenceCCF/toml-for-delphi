@@ -102,26 +102,12 @@ type
       Collects comment lines (and blank lines) until a non-comment token is seen. }
     FPendingComment: string;
     procedure Advance;
-    function Peek: TToken;
+    // function Peek: TToken;
     function Match(TokenType: TTokenType): Boolean;
     procedure Expect(TokenType: TTokenType);
-    { When FPreserveComments is True, skip newlines and collect comment tokens
-      into FPendingComment.  Returns the first non-comment, non-newline token. }
-    procedure SkipNewLinesAndCollectComments;
-    { Flush the pending comment buffer and attach it to AValue.CommentBefore. }
-    procedure AttachPendingAsBefore(AValue: TTOMLValue);
-    { If the current token is a ttComment, consume it and store as inline comment. }
     procedure CollectInlineComment(AValue: TTOMLValue);
     { Collect a trailing comment block (comment/blank lines) into a raw string. }
     function CollectTrailingComment: string;
-    { Append a comment token or newline token to a comment buffer using the
-      correct accumulation rules:
-        ttComment  — append text directly if buf ends with #10 or is empty,
-                     otherwise prepend a #10 separator first.
-        ttNewLine  — append #10 only when buf is non-empty (so leading blank
-                     lines are ignored; consecutive newlines create real blank
-                     lines). }
-    //function  CollectTrailingComment: string;
     function ParseValue: TTOMLValue;
     function ParseString: TTOMLString;
     function ParseNumber: TTOMLValue;
@@ -900,16 +886,15 @@ begin
   else
     FCurrentToken := FLexer.NextToken;
 end;
-
-function TTOMLParser.Peek: TToken;
-begin
-  if not FHasPeeked then
-  begin
-    FPeekedToken := FLexer.NextToken;
-    FHasPeeked := True;
-  end;
-  Result := FPeekedToken;
-end;
+//function TTOMLParser.Peek: TToken;
+//begin
+//  if not FHasPeeked then
+//  begin
+//    FPeekedToken := FLexer.NextToken;
+//    FHasPeeked := True;
+//  end;
+//  Result := FPeekedToken;
+//end;
 
 function TTOMLParser.Match(TokenType: TTokenType): Boolean;
 begin
@@ -929,50 +914,6 @@ begin
       (TTokenType), Ord(TokenType)), GetEnumName(TypeInfo(TTokenType), Ord(FCurrentToken.TokenType)),
       FCurrentToken.Line, FCurrentToken.Column]);
   Advance;
-end;
-{ Consume leading newlines and any comment/blank-line blocks, accumulating
-  them into FPendingComment. }
-
-procedure TTOMLParser.SkipNewLinesAndCollectComments;
-begin
-  while FCurrentToken.TokenType in [ttNewLine, ttComment] do
-  begin
-    if FPreserveComments then
-    begin
-      if FCurrentToken.TokenType = ttComment then
-      begin
-        // If the buffer already ends with #10 (from a preceding newline token)
-        // append directly; otherwise add a separator #10 first.
-        // When the buffer is empty start fresh.
-        if FPendingComment = '' then
-          FPendingComment := FCurrentToken.Value
-        else if FPendingComment[Length(FPendingComment)] = #10 then
-          FPendingComment := FPendingComment + FCurrentToken.Value
-        else
-          FPendingComment := FPendingComment + #10 + FCurrentToken.Value;
-      end
-      else // ttNewLine
-      begin
-        // Only record the newline when the buffer is non-empty (so leading
-        // blank lines before the first comment are ignored). A real blank line
-        // (two consecutive newlines) naturally produces \n\n in the buffer.
-        if FPendingComment <> '' then
-          FPendingComment := FPendingComment + #10;
-      end;
-    end;
-    Advance;
-  end;
-end;
-
-procedure TTOMLParser.AttachPendingAsBefore(AValue: TTOMLValue);
-begin
-  if FPreserveComments and Assigned(AValue) and (FPendingComment <> '') then
-  begin
-    AValue.CommentBefore := FPendingComment;
-    FPendingComment := '';
-  end
-  else
-    FPendingComment := '';
 end;
 
 procedure TTOMLParser.CollectInlineComment(AValue: TTOMLValue);
@@ -1121,7 +1062,8 @@ begin
           else
             for i := 1 to Length(BaseValue) do
             begin
-              if not (BaseValue[i] in ['0'..'7']) then
+//              if not (BaseValue[i] in ['0'..'7']) then
+              if not CharInSet(BaseValue[i], ['0'..'7']) then
               begin
                 Code := i;
                 Break;
@@ -1139,7 +1081,8 @@ begin
           else
             for i := 1 to Length(BaseValue) do
             begin
-              if not (BaseValue[i] in ['0', '1']) then
+           // if not (BaseValue[i] in ['0', '1']) then
+              if not CharInSet(BaseValue[i], ['0'..'1']) then
               begin
                 Code := i;
                 Break;
@@ -1440,16 +1383,13 @@ function TTOMLParser.ParseInlineTable: TTOMLTable;
   FPendingComment is a *shared* parser-level field used by the top-level Parse
   loop and also reset inside ParseInlineTable in the previous implementation.
   That caused two classes of bugs:
-
     A) Nesting bug – when an inner ParseInlineTable recursion is triggered via
        ParseValue → ParseInlineTable, the inner call wiped FPendingComment that
        the outer call had just accumulated for the current key's CommentBefore.
-
     B) Trailing-comment loss – after the last comma (trailing comma) the loop
        jumped back to the top, reset FPendingComment := '', consumed the
        following comments into it, then hit '}' and broke out — discarding
        everything that had been accumulated.
-
   Fix: ParseInlineTable uses *only local variables* for comment accumulation.
   FPendingComment is saved on entry and restored on exit so that any outer
   context (top-level Parse loop or outer ParseInlineTable call) is unaffected.
@@ -1461,11 +1401,12 @@ var
   // All comment buffers are LOCAL — never touch FPendingComment directly.
   LocalPending: string;    // pre-key comment block (CommentBefore candidate)
   OpenBraceCmt: string;    // comment on the '{' opening line
-  TrailingCmt:  string;    // comment after last entry, before '}'
+  TrailingCmt: string;    // comment after last entry, before '}'
   SavedPending: string;    // FPendingComment value on entry — restored on exit
 
   { Append a token's contribution to a local comment buffer, using the same
     accumulation rules as the rest of the parser. }
+
   procedure AppendToLocal(var Buf: string; const Tok: TToken);
   begin
     if Tok.TokenType = ttComment then
@@ -1483,9 +1424,9 @@ var
         Buf := Buf + #10;
     end;
   end;
-
   { Collect comment/newline tokens into Buf; stop at the first token that is
     neither a comment nor a newline. }
+
   procedure CollectLocal(var Buf: string);
   begin
     while FCurrentToken.TokenType in [ttNewLine, ttComment] do
@@ -1494,11 +1435,11 @@ var
       Advance;
     end;
   end;
-
   { Collect comment/newline tokens into a local trailing-comment buffer.
     Blank lines at the very start are included (unlike CollectLocal which
     skips leading blank lines — actually both behave the same here because
     AppendToLocal for ttNewLine only appends when Buf is non-empty). }
+
   function CollectLocalTrailing: string;
   begin
     Result := '';
