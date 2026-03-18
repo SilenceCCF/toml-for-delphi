@@ -245,7 +245,7 @@ end;
 
 procedure TTOMLLexer.SkipHorizontalWhitespace;
 begin
-  while not IsAtEnd and CharInSet(Peek, [' ', #9, #$FEFF]) do
+  while not IsAtEnd and (CharInSet(Peek, [' ', #9]) or (Peek = #$FEFF)) do
     Advance;
 end;
 
