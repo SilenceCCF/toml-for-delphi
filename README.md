@@ -1,10 +1,10 @@
 🇺🇸 [English](README.md) | 🇨🇳 [简体中文](README_CN.md)
-# DelphiTOML  Version 2026.03.13
+# DelphiTOML  Version 2026.03.18
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Delphi](https://img.shields.io/badge/Delphi10.3%20and%20high-green.svg)](https://www.embarcadero.com/products/delphi/)
 [![TOML](https://img.shields.io/badge/TOML-1.1.0-green.svg)](https://toml.io/)
-![Version](https://img.shields.io/badge/Version-2026.03.11-blue.svg)
+![Version](https://img.shields.io/badge/Version-2026.03.18-blue.svg)
 
 A unit for parsing the [TOML](https://toml.io/) version 1.1.0 format, rewritten from [ikelaiah's TOML Parser for Free Pascal](https://github.com/ikelaiah/toml-fp) version 1.0.3, compatible with Delphi 2005 and later, with significant revisions and enhancements.
 1. Fully supports the [TOML V1.1.0](https://toml.io/en/v1.1.0) specification, and has passed all 894 tests (V 1.1.0 version) of the [TOML official test program](https://github.com/toml-lang/toml-test). 
