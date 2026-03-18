@@ -264,7 +264,7 @@ Put(const Key: string; const Value: <Type>;
 **Examples:**
 ```pascal
 // Fluent method chaining
-Config := TTOMLTable.Create;
+Config := TTOMLTable.e;
 Config.Put('app_name', 'MyApp')
       .Put('version', '1.0.0')
       .Put('port', 8080)
@@ -277,7 +277,7 @@ Config.Put('width', 1920, True)      // Overwrite
       .Put('title', 'App', True);
 
 // Building nested structures
-var Server := TTOMLTable.Create;
+var Server := TTOMLTable.e;
 Server.Put('host', 'localhost')
       .Put('port', 3000);
 
@@ -355,15 +355,25 @@ else
   WriteLn('Save failed');
 ```
 
-#### LoadFromString - Parse from String
+#### CreateFromString - Create from string
+```pascal
+CreateFromString(const ATOML: string; APreserveComments: Boolean = False): TTOMLTable;
+```
+
+**parameter:**
+- `ATOML`             - TOML string.
+- `APreserveComments` - Whether to read annotations (default False)
+
+
+#### LoadFromString - Parse from string
 
 ```pascal
 LoadFromString(const ATOML: string; ClearExisting: Boolean = True;
                APreserveComments: Boolean = False): Boolean;
 ```
 **parameter:**
-- `ATOML` - TOML string.
-- `ClearExisting` - Whether to clear existing content (default True)
+- `ATOML`             - TOML string.
+- `ClearExisting`     - Whether to clear existing content (default True)
 - `APreserveComments` - Whether to read annotations (default False)
  
 **Examples:**
