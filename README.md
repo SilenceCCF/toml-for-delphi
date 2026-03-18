@@ -33,6 +33,10 @@ invalid tests: 466 passed,  0 failed
 ```
   or:
 ```pascal
+  Config := TTOMLTable.CreateFromFile('config.toml');
+```
+  or:
+```pascal
     Config := NewTable;
     Config.LoadFromFile('config.toml');
 ```
