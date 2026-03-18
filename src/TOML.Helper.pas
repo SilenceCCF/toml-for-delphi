@@ -1,20 +1,31 @@
 { TOML.Helper.pas
-  TOML auxiliary extension unit.
-  Provides TTOMLTableHelper and TTOMLArrayHelper class helpers with a rich
-  read/write/chain API.  Adapted for the ordered-table (TTOMLOrderedTable)
-  and comment-property additions introduced in TOML.Types.
-  Changes from the original:
-    - TTOMLTableHelper methods use FItems.AddOrSetValue where direct dictionary
-      access was previously used, so the ordered-table contract is respected.
-    - SetValueAtPath creates intermediate tables via TTOMLTable.Add (ordered).
-    - GetKeys enumerates keys in insertion order via Items.Keys.
-    - Clone / LoadFromString / LoadFromFile copy entries in insertion order.
-    - ParseTOML / LoadTOML wrappers forward APreserveComments when needed.
-    - TTOMLTable.Clear / TTOMLTableHelper.Clear free values through the ordered
-      table API.
-    - Comment properties (CommentBefore, CommentInline, CommentTrailing) are
-      accessible on any TTOMLValue, so callers can manipulate them directly
-      without any extra helper methods.
+TOML auxiliary extension units, through class helpers,
+provide TTOMLLTable and TTOMLArray with...
+Provides a simpler and more secure read/write API.
+
+Main functions:
+- TTOMLTableHelper: Reading (GetXxx / TryGetXxx) and writing (SetXxx) tables.
+  Chained calls (Put), file operations (LoadFromFile / SaveToFile),
+  Key management (HasKey / GetKeys / Remove / Clear / Clone / Count),
+  File and String Operations (ToString / SaveToFile / LoadFromFile / CreateFromFile),
+  About JSON (ToJSON / SaveToJSONFile / LoadFromJson / LoadFromJsonFile)
+- TTOMLArrayHelper: Reads array elements (GetXxx / TryGetXxx) and appends/insert/writing
+  them (AddXxx / InsertXxx / SetXxx).
+Traversal (ForEachTable), removal (RemoveAt / Clear), etc.
+
+Global factory function:
+- NewTable / NewArray: Create an empty object
+- LoadTOML: Loads from a file; returns nil on error.
+- ParseTOML: Parses a string, returns nil on error.
+- TryParseTOML: Parses a string and returns a Boolean result.
+
+Path navigation (internal helper function):
+- SplitPath: Splits paths enclosed in quotes and periods
+  (supports "a".bc".d format)
+- NavigateToTable: Navigate to the target table along the path.
+- GetValueFromPath: Retrieves the value along the path.
+- SetValueAtPath: Writes a value along the path
+  (intermediate levels that do not exist will be created automatically).
 }
 unit TOML.Helper;
 
@@ -86,6 +97,7 @@ type
     function Put(const Key: string; Value: TTOMLTable; Overwrite: Boolean = True): TTOMLTable; overload;
 
     { ----- File / string I/O ----- }
+    function CreateFromFile(const FileName: string; APreserveComments: Boolean = False): TTOMLTable;
     function LoadFromFile(const FileName: string; ClearExisting: Boolean = True; APreserveComments: Boolean =
       False): Boolean;
     function LoadFromString(const ATOML: string; ClearExisting: Boolean = True; APreserveComments: Boolean =
@@ -947,6 +959,11 @@ end;
 { =========================================================================
   TTOMLTableHelper — File / string I/O
   ========================================================================= }
+
+function TTOMLTableHelper.CreateFromFile(const FileName: string; APreserveComments: Boolean): TTOMLTable;
+begin
+  Result := TOML.Parser.ParseTOMLFile(FileName, APreserveComments);
+end;
 
 function TTOMLTableHelper.LoadFromFile(const FileName: string; ClearExisting, APreserveComments: Boolean): Boolean;
 var
